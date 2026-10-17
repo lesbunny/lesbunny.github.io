@@ -102,7 +102,7 @@
   <p class="editor-footnote"><b>Save draft</b> keeps changes in this browser. <b>Publish</b> commits the current page directly to this repository. <b>Export HTML</b> is the manual backup option.</p>
 </div>
 <script id="editorDraftRestore">
-(()=>{try{const draft=localStorage.getItem('lesbunny-page-draft-v2');if(draft){const main=document.querySelector('main.wrap');if(main)main.innerHTML=draft}}catch(e){}})();
+(()=>{try{const draft=localStorage.getItem('lesbunny-page-draft-v3');if(draft){const main=document.querySelector('main.wrap');if(main)main.innerHTML=draft}}catch(e){}})();
 </script>
 
 <script>
@@ -118,7 +118,7 @@
  function updateClock(){const now=new Date();document.getElementById('clock').textContent=now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});document.getElementById('year').textContent=now.getFullYear()}updateClock();setInterval(updateClock,30000);
 
  // Hidden 5-click footer editor, with nested-child editing and direct GitHub publishing.
- const DRAFT_KEY='lesbunny-page-draft-v2', main=document.querySelector('main.wrap'), editor=document.getElementById('siteEditor');
+ const DRAFT_KEY='lesbunny-page-draft-v3', main=document.querySelector('main.wrap'), editor=document.getElementById('siteEditor');
  const yearTrigger=document.getElementById('year'), editorSelection=document.getElementById('editorSelection'), editorStatus=document.getElementById('editorStatus');
  const editTextButton=document.getElementById('editorEditText'), parentButton=document.getElementById('editorParent'), deleteButton=document.getElementById('editorDelete');
  const linkFields=document.getElementById('editorLinkFields'), imageFields=document.getElementById('editorImageFields'), hrefInput=document.getElementById('editorHref'), imageSrcInput=document.getElementById('editorImageSrc'), altInput=document.getElementById('editorAlt'), imageFile=document.getElementById('editorFile');
