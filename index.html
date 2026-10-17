@@ -80,7 +80,6 @@
 
 <script>
 (()=>{
- const DRAFT_KEY='lesbunny-page-draft-v1';
  const html=document.documentElement, toggle=document.getElementById('themeToggle'), themeLabel=document.getElementById('themeLabel'), themeIcon=document.getElementById('themeIcon'), toast=document.getElementById('toast');
  let savedTheme=null; try{savedTheme=localStorage.getItem('lesbunny-theme')}catch(e){} if(savedTheme==='light'||savedTheme==='dark')html.dataset.theme=savedTheme;
  function updateThemeButton(){const light=html.dataset.theme==='light';themeLabel.textContent=light?'Dark mode':'Light mode';themeIcon.textContent=light?'☾':'☼';document.querySelector('meta[name="theme-color"]').content=light?'#f7f1ff':'#17111f'}
