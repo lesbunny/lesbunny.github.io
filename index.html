@@ -188,7 +188,51 @@
  function serializePage(){const copy=document.documentElement.cloneNode(true);copy.querySelectorAll('.editor-selected').forEach(el=>el.classList.remove('editor-selected'));copy.querySelectorAll('[contenteditable="true"]').forEach(el=>el.removeAttribute('contenteditable'));const body=copy.querySelector('body');if(body)body.classList.remove('editor-on');const panel=copy.querySelector('#siteEditor');if(panel){panel.hidden=true;panel.setAttribute('aria-hidden','true')}const tok=copy.querySelector('#editorToken');if(tok){tok.value='';tok.setAttribute('value','')}const statusEl=copy.querySelector('#editorStatus');if(statusEl)statusEl.textContent='Your draft stays in this browser until you export it.';return '<!doctype html>\n'+copy.outerHTML}
  function base64Utf8(value){const bytes=new TextEncoder().encode(value);let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(binary)}
  document.getElementById('editorExport').addEventListener('click',()=>{if(selected&&selected.isContentEditable){selected.removeAttribute('contenteditable');updateSelection()}saveDraft(false);const source=serializePage();const blob=new Blob([source],{type:'text/html;charset=utf-8'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='lesbunny-updated-index.html';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);status('Exported lesbunny-updated-index.html.');showToast('Website exported ♡')});
- publishButton.addEventListener('click',async()=>{if(selected&&selected.isContentEditable){selected.removeAttribute('contenteditable');updateSelection()}const token=tokenInput.value.trim();if(!token){status('Paste a restricted fine-grained GitHub token first.');tokenInput.focus();return}publishButton.disabled=true;const prior=publishButton.textContent;publishButton.textContent='Publishing…';status('Authenticating with GitHub and uploading index.html…');try{const base='https://api.github.com/repos/lesbunny/lesbunny.github.io/contents/index.html',headers={'Accept':'application/vnd.github+json','Authorization':'Bearer '+token,'X-GitHub-Api-Version':'2022-11-28'};const getResponse=await fetch(base+'?ref=main',{headers});const getData=await getResponse.json().catch(()=>({}));if(!getResponse.ok){if(getResponse.status===401)throw new Error('GitHub rejected the token. Check that it is valid and not expired.');if(getResponse.status===403)throw new Error('GitHub denied access. Ensure the token permits Contents read/write for lesbunny.github.io.');throw new Error('Could not read the current index.html (HTTP '+getResponse.status+'). Check the repository and token permissions.')}const html=serializePage();const putResponse=await fetch(base,{method:'PUT',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({message:'Publish website from visual editor',content:base64Utf8(html),sha:getData.sha,branch:'main'})});const putData=await putResponse.json().catch(()=>({}));if(!putResponse.ok){if(putResponse.status===409||putResponse.status===422)throw new Error('GitHub could not apply the update, possibly because the file changed. Refresh the page and try again.');if(putResponse.status===401)throw new Error('GitHub rejected the token. Check its expiration.');if(putResponse.status===403)throw new Error('Permission denied. Token needs Contents: Read and write for this repository.');throw new Error('Publish failed (HTTP '+putResponse.status+'): '+(putData.message||'GitHub API error'))}saveDraft(false);status('Published! Commit '+String(putData.commit&&putData.commit.sha||'').slice(0,7)+'. GitHub Pages may take a minute to deploy.');showToast('Published to GitHub! The site is updating ♡');}catch(err){status('Publish error: '+(err&&err.message?err.message:'Network request failed. Check your connection.'));showToast('Publish failed — see the editor message.')}finally{tokenInput.value='';publishButton.disabled=false;publishButton.textContent=prior}});
+ async function githubJson(url, options, stage){
+   const controller=new AbortController();
+   const timer=setTimeout(()=>controller.abort(),20000);
+   try{
+     const response=await fetch(url,{...options,signal:controller.signal});
+     let data={};try{data=await response.json()}catch(e){}
+     return {response,data};
+   }catch(error){
+     if(controller.signal.aborted)throw new Error(stage+' timed out after 20 seconds. Check your connection, refresh the page, and try again.');
+     if(error&&error.name==='TypeError')throw new Error('Could not reach GitHub. Check your internet connection, browser extensions, or tracking protection, then try again.');
+     throw error;
+   }finally{clearTimeout(timer)}
+ }
+ publishButton.addEventListener('click',async()=>{
+   if(publishButton.disabled)return;
+   if(selected&&selected.isContentEditable){selected.removeAttribute('contenteditable');updateSelection()}
+   const token=tokenInput.value.trim();
+   if(!token){status('Paste a restricted fine-grained GitHub token first.');tokenInput.focus();return}
+   publishButton.disabled=true;const prior=publishButton.textContent;publishButton.textContent='Starting…';
+   try{
+     const base='https://api.github.com/repos/lesbunny/lesbunny.github.io/contents/index.html';
+     const headers={'Accept':'application/vnd.github+json','Authorization':'Bearer '+token,'X-GitHub-Api-Version':'2022-11-28'};
+     status('Step 1 of 2 · Reading the current file from GitHub…');publishButton.textContent='Connecting…';
+     const {response:getResponse,data:getData}=await githubJson(base+'?ref=main',{headers},'Reading index.html');
+     if(!getResponse.ok){
+       if(getResponse.status===401)throw new Error('GitHub rejected the token. Check that it is valid and not expired.');
+       if(getResponse.status===403)throw new Error('GitHub denied access. Ensure this token has Contents: Read and write for lesbunny.github.io.');
+       if(getResponse.status===404)throw new Error('GitHub could not find index.html on main. Check the repository name and branch.');
+       throw new Error('Could not read index.html (HTTP '+getResponse.status+'). '+(getData.message||'Check your token permissions.'));
+     }
+     const html=serializePage();const payload={message:'Publish website from visual editor',content:base64Utf8(html),sha:getData.sha,branch:'main'};
+     status('Step 2 of 2 · Sending your page to GitHub…');publishButton.textContent='Uploading…';
+     const {response:putResponse,data:putData}=await githubJson(base,{method:'PUT',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify(payload)},'Publishing index.html');
+     if(!putResponse.ok){
+       if(putResponse.status===409||putResponse.status===422)throw new Error('GitHub could not apply the update, possibly because the file changed. Refresh the page and try again.');
+       if(putResponse.status===401)throw new Error('GitHub rejected the token. Check its expiration.');
+       if(putResponse.status===403)throw new Error('Permission denied. Token needs Contents: Read and write for this repository.');
+       throw new Error('Publish failed (HTTP '+putResponse.status+'): '+(putData.message||'GitHub API error'));
+     }
+     saveDraft(false);status('Published successfully! Commit '+String(putData.commit&&putData.commit.sha||'').slice(0,7)+'. GitHub Pages may take a minute to deploy.');showToast('Published to GitHub! The site is updating ♡');
+   }catch(err){
+     status('Publish error: '+(err&&err.message?err.message:'Unknown error. Check your connection and try again.'));
+     showToast('Publish failed — see the editor message.');
+   }finally{tokenInput.value='';publishButton.disabled=false;publishButton.textContent=prior}
+ });
  document.getElementById('editorStatus').textContent='Click 2026 five times to open this editor.';
 
 
