@@ -103,7 +103,7 @@
   <p class="editor-footnote"><b>Save draft</b> keeps changes in this browser. <b>Publish</b> commits the current page directly to this repository. <b>Export HTML</b> is the manual backup option.</p>
 </div>
 <script id="editorDraftRestore">
-(()=>{try{const draft=localStorage.getItem('lesbunny-page-draft-v1');if(draft){const main=document.querySelector('main.wrap');if(main)main.innerHTML=draft}}catch(e){}})();
+(()=>{try{const draft=localStorage.getItem('lesbunny-page-draft-v2');if(draft){const main=document.querySelector('main.wrap');if(main)main.innerHTML=draft}}catch(e){}})();
 </script>
 
 <script>
@@ -119,7 +119,7 @@
  function updateClock(){const now=new Date();document.getElementById('clock').textContent=now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});document.getElementById('year').textContent=now.getFullYear()}updateClock();setInterval(updateClock,30000);
 
  // Hidden 5-click footer editor, with nested-child editing and direct GitHub publishing.
- const DRAFT_KEY='lesbunny-page-draft-v1', main=document.querySelector('main.wrap'), editor=document.getElementById('siteEditor');
+ const DRAFT_KEY='lesbunny-page-draft-v2', main=document.querySelector('main.wrap'), editor=document.getElementById('siteEditor');
  const yearTrigger=document.getElementById('year'), editorSelection=document.getElementById('editorSelection'), editorStatus=document.getElementById('editorStatus');
  const editTextButton=document.getElementById('editorEditText'), parentButton=document.getElementById('editorParent'), deleteButton=document.getElementById('editorDelete');
  const linkFields=document.getElementById('editorLinkFields'), imageFields=document.getElementById('editorImageFields'), hrefInput=document.getElementById('editorHref'), imageSrcInput=document.getElementById('editorImageSrc'), altInput=document.getElementById('editorAlt'), imageFile=document.getElementById('editorFile');
@@ -156,7 +156,15 @@
  deleteButton.addEventListener('click',()=>{if(!selected||selected===main)return;const label=(selected.innerText||selected.alt||selected.tagName).trim().slice(0,50);if(!confirm('Delete this selected page element?\n\n'+label))return;const removed=selected;selected=null;removed.remove();updateSelection();saveDraft(false);showToast('Element removed from your draft ♡')});
  function currentContainer(type){
    if(type==='section')return main;
-   if(type==='link'){if(selected&&selected.matches('.links-grid'))return selected;const grid=selected&&selected.closest('.links-grid');if(grid)return grid;const defaultGrid=main.querySelector('#links .links-grid');if(defaultGrid)return defaultGrid}
+   if(type==='link'){
+     if(!selected)return main.querySelector('#links .links-grid')||main;
+     if(selected.matches('.links-grid,.about-grid,.bottom-grid'))return selected;
+     const grid=selected.closest('.links-grid,.about-grid,.bottom-grid');if(grid)return grid;
+     if(selected.matches('section'))return selected.querySelector('.links-grid,.about-grid,.bottom-grid')||selected;
+     if(selected.matches('main.wrap'))return main.querySelector('#links .links-grid')||main;
+     const section=selected.closest('section');if(section)return section.querySelector('.links-grid,.about-grid,.bottom-grid')||section;
+     return selected.parentElement||main
+   }
    if(!selected)return main;
    const validContainers='main.wrap,section,.about-grid,.links-grid,.bottom-grid,.content-card,.learning-card,.note-card,.link-card,.hero-main,.profile-card,.signoff,.surface,.interests,.pill-row,.fact-list,.footer,.interest';
    const blocked='P,H1,H2,H3,H4,H5,H6,SPAN,STRONG,SMALL,IMG,BUTTON,INPUT,TEXTAREA,SELECT,LI,BLOCKQUOTE,CODE,LABEL';
