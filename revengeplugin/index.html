@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#171421">
+<meta name="description" content="Kira's maintained plugin collection for Revenge, Kettu and Vendetta-based Discord clients.">
+<title>Kira's Plugins · Revenge / Kettu</title>
+<style>
+:root{color-scheme:dark;--bg:#171421;--surface:#211d2c;--surface2:#302a40;--accent:#cbb7ff;--accent2:#a78bfa;--text:#f5efff;--muted:#c9bfd9;--line:#51465f;--good:#a7e3ca}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 80% -5%,#4b356c 0,transparent 37%),radial-gradient(ellipse at 0% 30%,#302646 0,transparent 30%),var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{width:min(1080px,calc(100% - 32px));margin:auto;padding:42px 0 44px}.topbar{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:11px;font-weight:800;letter-spacing:-.02em}.logo{display:grid;place-items:center;width:42px;height:42px;border-radius:15px;background:linear-gradient(140deg,#dacbff,#a78bfa);color:#27163f;font-weight:900;font-size:1.15rem;box-shadow:0 6px 28px #aa8bfa55}
+.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.link{border:1px solid var(--line);border-radius:999px;color:var(--muted);text-decoration:none;padding:8px 13px;font-size:.88rem}.nav a:hover,.link:hover{background:var(--surface2);color:var(--text)}
+.hero{padding:62px 0 34px;max-width:800px}.eyebrow{display:inline-flex;align-items:center;gap:9px;color:var(--accent);font-size:.75rem;font-weight:900;text-transform:uppercase;letter-spacing:.16em}.dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 17px var(--accent)}
+h1{margin:17px 0 16px;font-size:clamp(3.1rem,8vw,6.4rem);line-height:.94;letter-spacing:-.075em;font-weight:850}.gradient{background:linear-gradient(100deg,#f5efff 5%,#d2c0ff 48%,#a78bfa 100%);background-clip:text;color:transparent}.hero p{margin:0;color:var(--muted);font-size:1.12rem;max-width:650px}.meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:24px}.pill{border:1px solid var(--line);border-radius:999px;background:#ffffff06;padding:6px 11px;color:#ded3f7;font-size:.82rem}
+.section-heading{display:flex;justify-content:space-between;align-items:end;gap:20px;flex-wrap:wrap;margin:18px 0}.section-heading h2{font-size:1.45rem;letter-spacing:-.035em;margin:0}.section-heading p{color:var(--muted);margin:5px 0 0;font-size:.93rem}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{position:relative;display:flex;flex-direction:column;min-height:245px;padding:23px;border:1px solid var(--line);border-radius:25px;background:linear-gradient(150deg,#ffffff07,#ffffff02 44%),var(--surface);box-shadow:0 14px 45px #0002;transition:transform .18s,border-color .18s}.card:hover{transform:translateY(-3px);border-color:#8b77b5}.card.featured{border-color:#8b77b5;background:linear-gradient(145deg,#3c2e54,var(--surface) 65%)}.card-top{display:flex;justify-content:space-between;align-items:center;gap:12px}.symbol{display:grid;place-items:center;width:40px;height:40px;border-radius:14px;background:#cbb7ff1a;border:1px solid #8b77b555;color:var(--accent);font-size:1rem;font-weight:900}.badge{border:1px solid #8b77b555;border-radius:999px;padding:4px 9px;color:var(--accent);font-size:.72rem;font-weight:800;letter-spacing:.03em}.card h3{margin:16px 0 7px;font-size:1.25rem;letter-spacing:-.035em}.card p{color:var(--muted);font-size:.94rem;margin:0 0 22px;flex:1}.card-actions{display:flex;gap:8px;flex-wrap:wrap}.primary{background:var(--accent);color:#27163f;border:1px solid transparent;border-radius:999px;padding:9px 14px;font-weight:850;text-decoration:none;font-size:.86rem}.secondary{background:var(--surface2);color:var(--text);border:1px solid var(--line);border-radius:999px;padding:9px 13px;text-decoration:none;font-size:.86rem}
+.external{margin-top:36px;padding:25px;border-radius:25px;border:1px solid var(--line);background:#ffffff04}.external h2{margin:0 0 7px;font-size:1.35rem}.external p{margin:0 0 15px;color:var(--muted)}.external-links{display:flex;gap:9px;flex-wrap:wrap}.external-links a{border:1px solid var(--line);border-radius:999px;color:var(--text);text-decoration:none;background:var(--surface2);padding:8px 12px;font-size:.87rem}
+.notice{margin-top:17px;padding:14px 16px;border-radius:18px;background:#cbb7ff0c;border:1px solid #cbb7ff2a;color:var(--muted);font-size:.87rem}.notice strong{color:var(--text)}footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;color:#9f96af;font-size:.84rem;padding-top:32px}footer a{color:var(--accent);text-decoration:none}
+@media(max-width:700px){main{padding-top:24px}.hero{padding:47px 0 28px}.grid{grid-template-columns:1fr}.card{min-height:210px}.section-heading{align-items:start}h1{font-size:clamp(3.1rem,17vw,5rem)}}
+</style>
+</head>
+<body><main>
+<header class="topbar">
+  <div class="brand"><span class="logo">K</span><span>Kira's Plugins</span></div>
+  <nav class="nav"><a href="https://github.com/lesbunny/Discord-Plugins">Source</a><a href="https://github.com/lesbunny/Discord-Plugins/blob/master/THIRD_PARTY_NOTICES.md">Credits & licenses</a></nav>
+</header>
+<section class="hero">
+  <div class="eyebrow"><span class="dot"></span> Revenge · Kettu · Vendetta-based clients</div>
+  <h1><span class="gradient">Small tools.</span><br>More control.</h1>
+  <p>A maintained collection of client-side plugins, local display tools and quality-of-life tweaks. Install only what you need, then configure each plugin from your client settings.</p>
+  <div class="meta"><span class="pill">Local-first history</span><span class="pill">Toggleable features</span><span class="pill">Purple by preference</span></div>
+</section>
+<section>
+  <div class="section-heading"><div><h2>Kira-maintained plugins</h2><p>Open a plugin page for the install URL and settings notes.</p></div></div>
+  <div class="grid">
+    <article class="card featured"><div class="card-top"><span class="symbol">Ed</span><span class="badge">LOCAL ONLY</span></div><h3>Local Edit Remastered</h3><p>Use a full-screen local editor, put Edit Locally above Reply/Forward when possible, and keep edits by default. An optional setting clears them on restart.</p><div class="card-actions"><a class="primary" href="./localedit/">Open plugin page</a><a class="secondary" href="https://github.com/lesbunny/Discord-Plugins/tree/master/plugins/localedit">Source</a></div></article>
+    <article class="card"><div class="card-top"><span class="symbol">KU</span><span class="badge">UTILITIES</span></div><h3>KiraUtils</h3><p>A utility collection based on AzzyUtils, with repaired patch cleanup plus live toggles for No Type, Staff Tags and the Tenor GIF Fix in the published compatibility bundle.</p><div class="card-actions"><a class="primary" href="./kirautils/">Open plugin page</a><a class="secondary" href="https://github.com/lesbunny/Discord-Plugins/tree/master/plugins/KiraUtils">Source</a></div></article>
+    <article class="card"><div class="card-top"><span class="symbol">AE</span><span class="badge">PERSISTENT LOG</span></div><h3>AntiEd</h3><p>Keep a local log of message edits and deletions between app restarts. Optional inline display shows earlier text when a message changes.</p><div class="card-actions"><a class="primary" href="./antied/">Open plugin page</a><a class="secondary" href="https://github.com/lesbunny/Discord-Plugins/tree/master/plugins/antied">Source</a></div></article>
+    <article class="card"><div class="card-top"><span class="symbol">AE0</span><span class="badge">PERSISTENT LOG</span></div><h3>AntiEd Zero</h3><p>A dedicated history log in plugin settings for locally captured edits and deletions. Settings and records persist across restarts until you clear them.</p><div class="card-actions"><a class="primary" href="./antiedzero/">Open plugin page</a><a class="secondary" href="https://github.com/lesbunny/Discord-Plugins/tree/master/plugins/antiedzero">Source</a></div></article>
+  </div>
+</section>
+<section class="external"><h2>More plugins</h2><p>These existing plugins still live at their current upstream/maintainer install locations.</p><div class="external-links">
+<a href="https://shipwr3ckd.github.io/revengeplugin/HideBlockedAndIgnoredMessages/">Hide blocked/ignored prompts</a>
+<a href="https://shipwr3ckd.github.io/revengeplugin/CopyBios/">Copy bios</a>
+<a href="https://shipwr3ckd.github.io/revengeplugin/catbox.moe/">catbox.moe</a>
+<a href="https://shipwr3ckd.github.io/revengeplugin/silentmessages/">Silent Messages</a>
+<a href="https://shipwr3ckd.github.io/revengeplugin/RichPresence/">Rich Presence</a>
+<a href="https://shipwr3ckd.github.io/revengeplugin/nsfw-blur">NSFW Blur</a>
+<a href="https://shipwr3ckd.github.io/revengeplugin/AnonymousFileNames">AnonymousFileNames</a>
+<a href="https://shipwr3ckd.github.io/revengeplugin/ABSRPC">AudioBookShelfRichPresence</a>
+<a href="https://shipwr3ckd.github.io/revengeplugin/customVoiceMessages">Custom Voice Messages</a>
+<a href="https://shipwr3ckd.github.io/revengeplugin/staff-tags">Staff Tags</a>
+<a href="https://shipwr3ckd.github.io/FPTE/FakeProfileThemesAndEffects">Fake profile themes/effects</a>
+</div></section>
+<p class="notice"><strong>Privacy and credits.</strong> Local message edits and AntiEd history are client-side features. The plugins in this collection do not intentionally upload their saved local history. Kira's forks retain required upstream credits and license terms; see <a class="link" href="https://github.com/lesbunny/Discord-Plugins/blob/master/THIRD_PARTY_NOTICES.md">third-party notices</a>.</p>
+<footer><span>© 2026 Kira · Personal plugin collection</span><span>For compatible client mods only. Keep backups of settings before testing plugins.</span></footer>
+</main></body></html>
