@@ -316,6 +316,10 @@
     }
 
     function load() {
+      try {
+        const kiraController = globalThis.__kiraUtilsLive || globalThis.__kiraUtilsController;
+        kiraController?.setFeature?.("localEdit", false);
+      } catch {}
       const registry = globalThis.__lesbunnyLocalEditPlugins || (globalThis.__lesbunnyLocalEditPlugins = {});
       registry.remastered?.();
       const stop = () => {
