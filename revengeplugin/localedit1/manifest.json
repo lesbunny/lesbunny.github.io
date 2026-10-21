@@ -1,0 +1,11 @@
+{
+  "name": "Local Edit Remastered",
+  "description": "Edit other people's messages locally on this device. Changes are not sent to Discord and can be cleared in plugin settings.",
+  "authors": [
+    { "name": "Kira", "id": "737597276339437578" }
+  ],
+  "main": "index.js",
+  "version": "1.2.0",
+  "hash": "local-edit-remastered-1.2.0-20261020-fix1",
+  "vendetta": { "icon": "ic_edit_24px" }
+}
