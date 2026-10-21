@@ -184,37 +184,42 @@
       }
     }
 
-    const isRow = element => !!element?.props &&
-      typeof element.props.label === "string" &&
-      typeof element.props.onPress === "function";
-
     function addMenuRow(tree, message) {
-      const rows = findInReactTree(tree, node => Array.isArray(node) && node.some(isRow));
-      if (!rows) { log.warn("[localedit] Found the message menu but not its action-row list."); return tree; }
-      if (rows.some(row => row?.key === "local-edit-remastered-edit")) return tree;
+      const rowModule = safeFind(findByProps, "ActionSheetRow");
+      const ActionSheetRow = rowModule?.ActionSheetRow;
+      if (!ActionSheetRow) {
+        log.error("[localedit] ActionSheetRow module unavailable.");
+        return tree;
+      }
+      const groups = findInReactTree(tree, node => Array.isArray(node) && node[0]?.type?.name === "ActionSheetRowGroup");
+      if (!groups?.length) {
+        log.warn("[localedit] Could not find action-sheet groups.");
+        return tree;
+      }
+      if (findInReactTree(tree, node => Array.isArray(node) && node.some(row => row?.key === "local-edit-remastered-edit"))) return tree;
+
       const currentUser = UserStore?.getCurrentUser?.();
       const authorId = message?.author?.id ?? message?.authorId;
       if (!storage.showOwnMessageAction && currentUser?.id != null && authorId != null && String(currentUser.id) === String(authorId)) return tree;
 
-      const template = rows.find(row => isRow(row) && /edit/i.test(String(row?.props?.label ?? row?.props?.message ?? row?.props?.text ?? ""))) || rows.find(isRow);
-      if (!template) return tree;
       const onPress = () => { try { ActionSheet?.hideActionSheet?.(); } catch {} openEditor(message); };
-      let icon = template.props?.icon;
-      try {
-        const iconId = getAssetIDByName?.("ic_edit_24px");
-        const RowIcon = safeFind(findByProps, "ActionSheetRow")?.ActionSheetRow?.Icon;
-        if (RowIcon && iconId != null) icon = React.createElement(RowIcon, { source: iconId });
-      } catch {}
-      const row = React.cloneElement(template, {
+      const iconId = getAssetIDByName("ic_edit_24px") ?? getAssetIDByName("ic_edit");
+      const button = React.createElement(ActionSheetRow, {
         key: "local-edit-remastered-edit",
-        label: "Edit Locally", message: "Edit Locally", text: "Edit Locally", title: "Edit Locally",
-        icon, onPress, onPressRow: onPress, action: onPress
+        label: "Edit Locally",
+        icon: React.createElement(ActionSheetRow.Icon, { source: iconId }),
+        onPress
       });
-      const index = pattern => rows.findIndex(item => pattern.test(String(item?.props?.label ?? item?.props?.message ?? item?.props?.text ?? item?.props?.title ?? "")));
-      const reply = index(/\breply\b/i), forward = index(/\bforward\b/i), unread = index(/mark unread/i);
-      const actionIndices = [reply, forward].filter(i => i >= 0);
-      const at = actionIndices.length ? Math.min(...actionIndices) : unread >= 0 ? unread : rows.length;
-      rows.splice(at, 0, row);
+
+      const rows = findInReactTree(groups[0], node => Array.isArray(node) && node.some(row => row?.type?.name === "ActionSheetRow"));
+      if (rows) {
+        const reply = rows.findIndex(row => /reply/i.test(String(row?.props?.label ?? "")));
+        const forward = rows.findIndex(row => /forward/i.test(String(row?.props?.label ?? "")));
+        const candidates = [reply, forward].filter(index => index >= 0);
+        rows.splice(candidates.length ? Math.min(...candidates) : 0, 0, button);
+      } else {
+        groups.unshift(React.createElement(ActionSheetRow.Group, null, button));
+      }
       return tree;
     }
 
