@@ -434,7 +434,8 @@
       storage.localEditShowOwn ??= true;
       const patches = [];
       const menu = safeFind(findByProps, "openLazy", "hideActionSheet");
-      const actions = safeFind(findByProps, "startEditMessage", "editMessage");
+      const startActions = safeFind(findByProps, "startEditMessage");
+      const editActions = safeFind(findByProps, "editMessage") || startActions;
       const messageStore = safeFind(findByStoreName, "MessageStore") || safeFind(findByProps, "getMessage", "getMessages");
       let pending = null, oldEdit = null, wrappedEdit = null, timer = null;
       const restore = () => {
@@ -468,12 +469,12 @@
         if (Array.isArray(e.messages)) e.messages = e.messages.map(apply);
       }));
       const openEditor = msg => {
-        if (typeof actions?.startEditMessage !== "function" || typeof actions?.editMessage !== "function") { showToast("Native edit composer is unavailable."); return; }
+        if (typeof startActions?.startEditMessage !== "function" || typeof editActions?.editMessage !== "function") { showToast("Native edit composer is unavailable."); return; }
         restore();
         const id = String(msg?.id ?? ""), cid = String(msg?.channel_id ?? msg?.channelId ?? "");
         if (!id || !cid) return;
-        pending = { id, cid, msg, actions };
-        oldEdit = actions.editMessage;
+        pending = { id, cid, msg, actions: editActions };
+        oldEdit = editActions.editMessage;
         wrappedEdit = function (...args) {
           const p = pending, channel = String(args?.[0] ?? ""), messageId = String(args?.[1] ?? "");
           if (!p || messageId !== p.id || (channel && channel !== p.cid)) return oldEdit.apply(this, args);
@@ -485,9 +486,9 @@
           try { FluxDispatcher.dispatch({ type: "CLEAR_EDITING_MESSAGE", channelId: cid, messageId: id }); } catch {}
           return Promise.resolve();
         };
-        actions.editMessage = wrappedEdit;
+        editActions.editMessage = wrappedEdit;
         timer = setTimeout(restore, 120000);
-        try { actions.startEditMessage(cid, id, String(storage.localEdits[id]?.content ?? msg.content ?? "")); }
+        try { startActions.startEditMessage(cid, id, String(storage.localEdits[id]?.content ?? msg.content ?? "")); }
         catch (error) { restore(); console.error("[KiraUtils/LocalEdit]", error); }
       };
       if (menu?.openLazy) addCleanup(patches, before("openLazy", menu, ([component, key, props]) => {
