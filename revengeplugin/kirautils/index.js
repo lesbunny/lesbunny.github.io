@@ -425,6 +425,11 @@
     }
 
     function startLocalEdit() {
+      if (globalThis.__lesbunnyLocalEditPlugins?.remastered) {
+        storage.toggle.localEdit = false;
+        showToast("Standalone Local Edit is already enabled. Disable it to use KiraUtils Local Edit.");
+        return () => {};
+      }
       storage.localEdits ??= {};
       storage.localEditShowOwn ??= true;
       const patches = [];
