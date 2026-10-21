@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#171421">
+<meta name="description" content="Local Edit Remastered for Revenge and Kettu.">
+<title>Local Edit Remastered v1.2.3 · lesbunny</title>
+<style>
+:root{color-scheme:dark;--bg:#171421;--surface:#211d2c;--raised:#302a40;--accent:#cbb7ff;--text:#f5efff;--muted:#c9bfd9;--line:#51465f}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 82% 0%,#3c2d56 0,transparent 40%),var(--bg);color:var(--text);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{width:min(820px,calc(100% - 32px));margin:auto;padding:54px 0 40px}.eyebrow{display:inline-flex;align-items:center;gap:8px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 16px var(--accent)}
+h1{font-size:clamp(2.6rem,8vw,4.7rem);line-height:1.02;letter-spacing:-.06em;margin:18px 0}.lead{font-size:1.12rem;max-width:650px;color:var(--muted)}
+.panel{margin-top:28px;padding:clamp(20px,5vw,32px);border:1px solid var(--line);border-radius:28px;background:color-mix(in srgb,var(--surface) 93%,transparent);box-shadow:0 20px 70px #0003}
+h2{font-size:1.15rem;margin:0 0 10px}ol{padding-left:22px;color:var(--muted)}li{padding:4px 0}strong{color:var(--text)}code{display:inline-block;max-width:100%;overflow-wrap:anywhere;padding:5px 9px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:#e5d8ff}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}a,button{font:inherit;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:11px 16px;cursor:pointer}
+.primary{background:var(--accent);color:#27163f;border-color:transparent;font-weight:800}.secondary{background:var(--raised);color:var(--text)}
+.note{color:var(--muted);font-size:.92rem;margin:18px 0 0}footer{font-size:.84rem;color:#9f96af;margin-top:28px}
+a:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+</style></head>
+<body><main>
+<div class="eyebrow"><span class="dot"></span> Revenge · Kettu · Vendetta-based clients</div>
+<h1>Local Edit<br>Remastered</h1>
+<p class="lead">Change how any message appears on your device, including your own. Your local edits are saved by the plugin and are not sent to Discord or shown to other people.</p>
+<section class="panel">
+<h2>Install · Test build 3</h2>
+<ol>
+<li>Open Discord in a compatible <strong>Revenge, Kettu, or Vendetta-based client</strong>.</li>
+<li>Go to the client's <strong>Plugins</strong> page.</li>
+<li>Copy the raw GitHub folder URL below and paste it into Kettu's plugin installer. Kettu will fetch manifest.json from this location.</li>
+<li>Long-press any message and choose <strong>Edit Locally</strong>. The plugin setting controls whether the action also appears on your own messages.</li>
+</ol>
+<div class="actions">
+<button id="copy" class="primary">Copy install URL</button>
+<a class="secondary" href="https://raw.githubusercontent.com/lesbunny/lesbunny.github.io/main/revengeplugin/localedit4/manifest.json">View manifest</a>
+<a class="secondary" href="https://github.com/lesbunny/Discord-Plugins/tree/master/plugins/localedit">Source code</a>
+</div>
+<p class="note">Install URL<br><code id="url">https://raw.githubusercontent.com/lesbunny/lesbunny.github.io/main/revengeplugin/localedit4/</code></p>
+<p class="note">Version 1.2.3 test build 4. The own-message action is enabled by default and can be toggled in plugin settings. This is an unofficial client plugin. Discord updates can change internal modules; if its context-menu action stops appearing, check the source repository for compatibility updates.</p>
+</section>
+<footer>Local Edit Remastered v1.2.0 · Test build 4 · broader message-row detection.</footer>
+</main>
+<script>
+const installUrl="https://raw.githubusercontent.com/lesbunny/lesbunny.github.io/main/revengeplugin/localedit4/";
+document.getElementById("copy").addEventListener("click",async()=>{const b=document.getElementById("copy");try{await navigator.clipboard.writeText(installUrl)}catch{const t=document.createElement("textarea");t.value=installUrl;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove()}b.textContent="Copied!"});
+</script></body></html>
