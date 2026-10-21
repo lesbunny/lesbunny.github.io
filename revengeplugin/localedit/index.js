@@ -113,11 +113,11 @@
     function patchMessageStore() {
       if (!store) return;
       if (typeof store.getMessage === "function") {
-        patches.push(after(store, "getMessage", (args, result) =>
+        patches.push(after("getMessage", store, (args, result) =>
           displayMessage(result, args && args[0] != null ? args[0] : result && result.channel_id)));
       }
       if (typeof store.getMessages === "function") {
-        patches.push(after(store, "getMessages", (_args, result) => {
+        patches.push(after("getMessages", store, (_args, result) => {
           try {
             if (Array.isArray(result)) return result.map(m => displayMessage(m));
             const key = Array.isArray(result && result._array) ? "_array" :
@@ -136,7 +136,7 @@
 
     function patchEditor() {
       if (!messages || typeof messages.editMessage !== "function") return;
-      patches.push(before(messages, "editMessage", args => {
+      patches.push(before("editMessage", messages, args => {
         if (!activeEdit) return;
         const channelId = activeEdit.channelId;
         const id = activeEdit.messageId;
@@ -177,7 +177,7 @@
         console.warn("[localedit] Action sheet modules are unavailable; context-menu action was not installed.");
         return;
       }
-      patches.push(before(sheet, "openLazy", args => {
+      patches.push(before("openLazy", sheet, args => {
         const component = args && args[0];
         const key = args && args[1];
         const props = args && args[2];
@@ -190,7 +190,7 @@
         component.then(instance => {
           if (!instance || typeof instance.default !== "function") return;
           let removePatch;
-          removePatch = after(instance, "default", (_renderArgs, rendered) => {
+          removePatch = after("default", instance, (_renderArgs, rendered) => {
             if (removePatch) {
               setTimeout(removePatch, 0);
               removePatch = null;
