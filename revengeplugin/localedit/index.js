@@ -73,19 +73,9 @@
 
     function findRows(tree) {
       if (typeof findInReactTree !== "function") return null;
-      const isRow = node => {
-        const props = node && node.props;
-        if (!props) return false;
-        const label = props.label || props.message || props.title || props.accessibilityLabel;
-        const hasHandler = typeof props.onPress === "function" ||
-          typeof props.onPressRow === "function" || typeof props.onClick === "function";
-        if (typeof label !== "string" || !hasHandler) return false;
-        const type = node.type;
-        return type === Row || (type && (type.name === "ActionSheetRow" || type.displayName === "ActionSheetRow")) ||
-          /^(reply|copy|copy text|copy message link|mark unread|delete|pin message|add reaction)$/i.test(label);
-      };
-      try { return findInReactTree(tree, node => Array.isArray(node) && node.some(isRow)) || null; }
-      catch { return null; }
+      try {
+        return findInReactTree(tree, node => Array.isArray(node) && node[0] && node[0].type && node[0].type.name === "ButtonRow") || null;
+      } catch { return null; }
     }
 
     function startLocalEdit(message) {
@@ -193,59 +183,47 @@
     }
 
     function patchActionSheet() {
-      if (!sheet || typeof sheet.openLazy !== "function" || !Row ||
+      if (!sheet || typeof sheet.openLazy !== "function" || (!Row && !(Forms && Forms.FormRow)) ||
           typeof before !== "function" || typeof after !== "function") {
-        console.warn("[localedit] Action sheet modules are unavailable; context-menu action was not installed.");
+        console.warn("[localedit] Action sheet modules unavailable; context-menu action was not installed.");
         return;
       }
-      patches.push(before("openLazy", sheet, ([component, key, props]) => {
-        const keyText = String(key || "").toLowerCase();
-        if (!(keyText.includes("message") && keyText.includes("actionsheet"))) return;
-        const message = (props && (props.message ||
-          (props.target && props.target.message) ||
-          (props.actionMessage && props.actionMessage.message) ||
-          (props.messageProps && props.messageProps.message))) || props;
-        if (!message || !message.id || !(message.channel_id || message.channelId)) return;
-        if (!component || typeof component.then !== "function") return;
-        component.then(instance => {
+      patches.push(before("openLazy", sheet, ([component, key, msg]) => {
+        const message = msg && msg.message;
+        if (key !== "MessageLongPressActionSheet" || !message || !message.id) return;
+        const channelId = message.channel_id || message.channelId;
+        if (!channelId) return;
+        Promise.resolve(component).then(instance => {
           if (!instance || typeof instance.default !== "function") return;
-          let removePatch;
-          removePatch = after("default", instance, (_renderArgs, rendered) => {
-            if (removePatch) { setTimeout(removePatch, 0); removePatch = null; }
+          const unpatch = after("default", instance, (_args, rendered) => {
             try {
-              const rows = findRows(rendered);
-              if (!rows || rows.some(row => {
-                const label = row && row.props && (row.props.label || row.props.message);
-                return String(label || "").toLowerCase() === "edit locally";
-              })) return rendered;
+              const buttons = findRows(rendered);
+              if (!buttons || buttons.some(row =>
+                String((row && row.props && (row.props.label || row.props.message)) || "").toLowerCase() === "edit locally"
+              )) return rendered;
               const currentUser = userStore && userStore.getCurrentUser && userStore.getCurrentUser();
-              const currentMessage = store && store.getMessage
-                ? (store.getMessage(message.channel_id || message.channelId, message.id) || message)
-                : message;
+              const currentMessage = store && store.getMessage ? (store.getMessage(channelId, message.id) || message) : message;
               if (!currentUser || (currentMessage.author && currentMessage.author.id === currentUser.id)) return rendered;
-              const replyIndex = rows.findIndex(row => {
-                const label = row && row.props && (row.props.label || row.props.message);
-                return /reply/i.test(String(label || ""));
-              });
-              const position = replyIndex >= 0 ? replyIndex + 1 : 0;
-              const asset = safeFind(getAssetIDByName, "ic_edit_24px");
-              const Icon = Row.Icon;
-              const icon = Icon && asset ? React.createElement(Icon, { source: asset }) : undefined;
+              const FormRow = Forms && Forms.FormRow;
+              const ActualRow = Row || FormRow;
+              if (!ActualRow) return rendered;
               const onEdit = () => startLocalEdit(currentMessage);
-              rows.splice(position, 0, React.createElement(Row, {
+              const row = React.createElement(ActualRow, {
                 key: "localedit-" + String(currentMessage.id),
                 label: "Edit Locally",
                 message: "Edit Locally",
-                icon,
-                leading: icon,
-                iconSource: asset,
                 onPress: onEdit,
                 onPressRow: onEdit
-              }));
-            } catch (e) { console.error("[localedit] Failed to inject context-menu action.", e); }
+              });
+              const unreadIndex = buttons.findIndex(item =>
+                /mark unread/i.test(String((item && item.props && (item.props.label || item.props.message)) || ""))
+              );
+              buttons.splice(Math.max(unreadIndex, 0), 0, row);
+            } catch (e) { console.error("[localedit] Could not add the context-menu action.", e); }
             return rendered;
           });
-        }).catch(e => console.warn("[localedit] Could not load action sheet.", e));
+          setTimeout(() => { try { unpatch(); } catch {} }, 1500);
+        }).catch(e => console.warn("[localedit] Could not load the message action sheet.", e));
       }));
     }
 
