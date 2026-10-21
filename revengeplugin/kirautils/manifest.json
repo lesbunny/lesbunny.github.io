@@ -1,47 +1,15 @@
 {
   "name": "KiraUtils",
-  "description": "All-in-one toggleable utility collection: Hide Blocked/ignored, Copy Bios, catbox.moe, Silent Messages, Anonymous File Names, Hidden Channels with confirmation, Local Edit with optional restart cleanup, Staff Tags, Tenor GIF Fix, MiniMod and original AzzyUtils utilities.",
+  "description": "Kira's Revenge utilities.",
   "authors": [
     {
       "name": "Kira",
       "id": "925904715525554206"
-    },
-    {
-      "name": "Angel / Angelica (AzzyUtils base)",
-      "id": "692632336961110087"
-    },
-    {
-      "name": "Zykrah (HideBlockedAndIgnoredMessages)",
-      "id": "543614592291700748"
-    },
-    {
-      "name": "シグマ siguma",
-      "id": "737597276339437578"
-    },
-    {
-      "name": "maisy (AnonymousFileNames)",
-      "id": "257109471589957632"
-    },
-    {
-      "name": "cloudburst (original Hidden Channels author)",
-      "id": "892128204150685769"
-    },
-    {
-      "name": "Training Dummy (Hidden Channels contributor)",
-      "id": "601137505739472908"
-    },
-    {
-      "name": "Lioncat6 (Hidden Channels)",
-      "id": "917903273514663957"
-    },
-    {
-      "name": "nexpid (NexxUtils)",
-      "id": "853550207039832084"
     }
   ],
   "main": "index.js",
-  "version": "2.4.0",
-  "hash": "KiraUtils-2.4.0-20261021",
+  "version": "2.5.0",
+  "hash": "KiraUtils-2.5.0-20261021",
   "vendetta": {
     "icon": "ic_progress_wrench_24px"
   }
