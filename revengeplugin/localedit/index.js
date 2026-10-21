@@ -20,6 +20,7 @@
     const patches = [];
     let enabled = false;
     let MessageStore, UserStore, ActionSheet, MessageActions;
+    let pendingNativeEdit = null, originalNativeEditMessage = null, wrappedNativeEditMessage = null, nativeEditTimeout = null;
 
     const safeFind = (fn, ...args) => {
       try { return typeof fn === "function" ? fn(...args) : null; } catch { return null; }
@@ -61,8 +62,21 @@
       return list.map(item => Array.isArray(item) ? processList(item) : withEdit(item));
     }
 
+    function cancelNativeEditing() {
+      if (nativeEditTimeout) clearTimeout(nativeEditTimeout);
+      nativeEditTimeout = null;
+      const actions = pendingNativeEdit?.actions;
+      if (actions && originalNativeEditMessage && actions.editMessage === wrappedNativeEditMessage) {
+        actions.editMessage = originalNativeEditMessage;
+      }
+      pendingNativeEdit = null;
+      originalNativeEditMessage = null;
+      wrappedNativeEditMessage = null;
+    }
+
     function interceptor(action) {
       if (!enabled || !action?.type || action.__localEditRemastered) return false;
+      if (pendingNativeEdit && ["CLEAR_EDITING_MESSAGE", "CANCEL_EDITING_MESSAGE", "END_EDITING_MESSAGE"].includes(action.type)) cancelNativeEditing();
       try {
         const message = action.message;
         if (message?.id != null &&
@@ -124,64 +138,46 @@
       }
     }
 
-    const EDITOR_KEY = "LocalEditRemasteredEditor";
-
     function openEditor(message) {
-      const initial = getEdit(message.id)?.content ?? String(message.content ?? "");
-      const nav = safeFind(findByProps, "pushModal", "popModal");
-      if (typeof nav?.pushModal === "function" && typeof nav?.popModal === "function") {
-        const Screen = () => {
-          const [value, setValue] = React.useState(initial);
-          const Input = ReactNative?.TextInput || findSingleExport("TextInput");
-          const close = () => nav.popModal(EDITOR_KEY);
-          const save = () => { if (saveLocalEdit(message, value)) close(); };
-          const text = (value, style = {}) => React.createElement(Text, { style: { color: "#f5efff", ...style } }, value);
-          const button = (label, onPress, primary = false) => React.createElement(Pressable, {
-            onPress, accessibilityRole: "button",
-            style: { minHeight: 44, borderRadius: 14, paddingHorizontal: 16, alignItems: "center", justifyContent: "center", backgroundColor: primary ? "#cbb7ff" : "#302a40", borderWidth: primary ? 0 : 1, borderColor: "#51465f" }
-          }, React.createElement(Text, { style: { color: primary ? "#27163f" : "#f5efff", fontWeight: "700" } }, label));
-          return React.createElement(View, { style: { flex: 1, backgroundColor: "#171421", paddingHorizontal: 18, paddingTop: 16, paddingBottom: 24 } },
-            React.createElement(View, { style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: 18 } },
-              button("Cancel", close), text("Edit message", { fontSize: 18, fontWeight: "800" }), button("Save", save, true)),
-            text("EDIT LOCALLY", { color: "#cbb7ff", fontSize: 12, fontWeight: "800", letterSpacing: 1, marginBottom: 6 }),
-            text("This changes only what you see on this device. It is never sent to Discord.", { color: "#c9bfd9", fontSize: 13, lineHeight: 18, marginBottom: 14 }),
-            React.createElement(View, { style: { flex: 1, minHeight: 240, borderRadius: 18, borderWidth: 1, borderColor: "#51465f", backgroundColor: "#211d2c", padding: 14 } },
-              Input ? React.createElement(Input, {
-                autoFocus: true, multiline: true, value, onChangeText: next => setValue(String(next ?? "")),
-                placeholder: "Message content", placeholderTextColor: "#9288a5", selectionColor: "#cbb7ff",
-                textAlignVertical: "top", underlineColorAndroid: "transparent",
-                style: { flex: 1, minHeight: 220, color: "#f5efff", fontSize: 16, lineHeight: 23, padding: 0 }
-              }) : text("This client does not expose a multiline text input.")),
-            text("Saved changes are local display overrides, not real message edits.", { color: "#aaa2bf", fontSize: 12, marginTop: 14 }));
-        };
-        try {
-          nav.pushModal({ key: EDITOR_KEY, modal: { key: EDITOR_KEY, modal: Screen, animation: "slide-up", shouldPersistUnderModals: false, closable: true } });
-          return;
-        } catch (error) { log.warn("[localedit] Native editor could not open.", error); }
-      }
-
-      const modal = safeFind(findByProps, "AlertModal", "AlertActions") || {};
-      const alerts = safeFind(findByProps, "openAlert", "dismissAlert") || {};
-      const TextInput = findSingleExport("TextInput");
-      if (!modal.AlertModal || !modal.AlertActionButton || !TextInput || !alerts.openAlert || !alerts.dismissAlert) {
-        log.error("[localedit] No compatible local editor UI was found.");
+      const actions = safeFind(findByProps, "startEditMessage", "editMessage");
+      if (typeof actions?.startEditMessage !== "function" || typeof actions?.editMessage !== "function") {
+        log.error("[localedit] Discord's native edit composer could not be found.");
         return;
       }
-      function EditorFallback() {
-        const [value, setValue] = React.useState(initial);
-        const save = () => { if (saveLocalEdit(message, value)) alerts.dismissAlert(EDITOR_KEY); };
-        return React.createElement(modal.AlertModal, {
-          title: "Edit message locally",
-          content: React.createElement(View, { style: { gap: 12 } },
-            React.createElement(Text, null, "Only your device will show this text."),
-            React.createElement(TextInput, { autoFocus: true, multiline: true, numberOfLines: 8, textAlignVertical: "top", style: { minHeight: 180 }, value, onChange: v => setValue(typeof v === "string" ? v : v?.text ?? "") })),
-          actions: React.createElement(View, { style: { flexDirection: "row", justifyContent: "flex-end", gap: 8 } },
-            React.createElement(modal.AlertActionButton, { text: "Save locally", variant: "primary", onPress: save }),
-            React.createElement(modal.AlertActionButton, { text: "Cancel", variant: "secondary", onPress: () => alerts.dismissAlert(EDITOR_KEY) }))
-        });
+
+      cancelNativeEditing();
+      const id = String(message?.id ?? "");
+      const channel = String(message?.channel_id ?? message?.channelId ?? "");
+      if (!id || !channel) return;
+      pendingNativeEdit = { id, channel, message, actions };
+      originalNativeEditMessage = actions.editMessage;
+      wrappedNativeEditMessage = function (...args) {
+        const pending = pendingNativeEdit;
+        const targetChannel = String(args?.[0] ?? "");
+        const targetId = String(args?.[1] ?? "");
+        if (!pending || targetId !== pending.id || (targetChannel && targetChannel !== pending.channel)) {
+          return originalNativeEditMessage.apply(this, args);
+        }
+        const payload = args?.[2];
+        const content = typeof payload === "string" ? payload : payload?.content ?? payload?.text ?? payload?.value;
+        if (typeof content !== "string") return originalNativeEditMessage.apply(this, args);
+        const targetMessage = pending.message;
+        cancelNativeEditing();
+        saveLocalEdit(targetMessage, content);
+        try {
+          FluxDispatcher.dispatch({ type: "CLEAR_EDITING_MESSAGE", channelId: channel, messageId: id });
+        } catch {}
+        return Promise.resolve();
+      };
+      actions.editMessage = wrappedNativeEditMessage;
+      nativeEditTimeout = setTimeout(cancelNativeEditing, 120000);
+
+      try {
+        actions.startEditMessage(channel, id, String(getEdit(id)?.content ?? message.content ?? ""));
+      } catch (error) {
+        cancelNativeEditing();
+        log.error("[localedit] Could not open Discord's native edit composer.", error);
       }
-      try { alerts.openAlert(EDITOR_KEY, React.createElement(EditorFallback)); }
-      catch (error) { log.error("[localedit] Could not open local editor.", error); }
     }
 
     const isRow = element => !!element?.props &&
@@ -300,6 +296,7 @@
     function unload() {
       if (!enabled) return;
       enabled = false;
+      cancelNativeEditing();
       try {
         if (Array.isArray(FluxDispatcher?._interceptors)) {
           FluxDispatcher._interceptors = FluxDispatcher._interceptors.filter(item => item !== interceptor);
