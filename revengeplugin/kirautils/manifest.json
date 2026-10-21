@@ -1,0 +1,24 @@
+{
+  "name": "KiraUtils",
+  "description": "A toggleable set of client-side utilities adapted from AzzyUtils, with Staff Tags and the NexxUtils-inspired Tenor GIF fix.",
+  "authors": [
+    {
+      "name": "Kira",
+      "id": "925904715525554206"
+    },
+    {
+      "name": "Angelica (original AzzyUtils author)",
+      "id": "692632336961110087"
+    },
+    {
+      "name": "nexpid (Tenor GIF Fix attribution)",
+      "id": "853550207039832084"
+    }
+  ],
+  "main": "index.js",
+  "version": "2.0.0",
+  "hash": "KiraUtils-2.0.0-20261021",
+  "vendetta": {
+    "icon": "ic_progress_wrench_24px"
+  }
+}
