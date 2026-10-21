@@ -711,6 +711,14 @@
     }
 
     function load() {
+      storage.localEditClearOnRestart ??= false;
+      const localEditSession = globalThis.__kiraUtilsLocalEditSession ??=
+        `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      if (storage.localEditClearOnRestart && storage.localEditSessionId && storage.localEditSessionId !== localEditSession) {
+        storage.localEdits = {};
+      }
+      storage.localEditSessionId = localEditSession;
+      storage.localEdits ??= {};
       storage.toggle ??= {};
       storage.toggle.notype ??= false;
       storage.toggle.staffTags ??= false;
