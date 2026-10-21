@@ -390,6 +390,347 @@
       return () => cleanup(patches);
     }
 
+
+    function realViewPermission(channel) {
+      const module = safeFind(findByProps, "getChannelPermissions", "can");
+      const permission = constants?.Permissions?.VIEW_CHANNEL;
+      if (!module || typeof module.can !== "function" || permission == null || !channel) return true;
+      const old = channel.realCheck;
+      channel.realCheck = true;
+      let allowed = true;
+      try { allowed = !!module.can(permission, channel); } catch {}
+      if (old === undefined) delete channel.realCheck; else channel.realCheck = old;
+      return allowed;
+    }
+
+    function startColorfulChannels() {
+      const patches = [];
+      storage.colorfulChannelsNsfwTag ??= true;
+      storage.colorfulChannelsColorIcons ??= true;
+      storage.colorfulChannelsFallbackColors ??= false;
+      const baseModule = safeFind(findByProps, "BaseChannelIcon");
+      if (baseModule?.BaseChannelIcon) {
+        addCleanup(patches, after("BaseChannelIcon", baseModule, ([props], rendered) => {
+          const source = props?.source;
+          const id = typeof source?.original === "number" ? source.original : typeof source === "number" ? source : null;
+          const name = id == null ? "" : String(vendetta.ui.assets.getAssetByID?.(id)?.name ?? "");
+          if (!name || !storage.colorfulChannelsColorIcons || !React.isValidElement(rendered)) return rendered;
+          let tint = null;
+          if (/LockIcon$/.test(name)) {
+            const channel = props?.channel;
+            if (!channel || realViewPermission(channel)) return rendered;
+            tint = storage.colorfulChannelsFallbackColors ? "#f0b232" : "#e5b94f";
+          } else if (/WarningIcon$/.test(name)) tint = storage.colorfulChannelsFallbackColors ? "#f23f43" : "#e05260";
+          else if (/ControllerIcon$/.test(name)) tint = storage.colorfulChannelsFallbackColors ? "#23a55a" : "#56b88b";
+          if (!tint) return rendered;
+          const icon = React.cloneElement(rendered, { color: tint, style: [rendered.props?.style, { tintColor: tint }] });
+          if (props?.channel && storage.toggle?.hiddenChannels && storage.hiddenChannelsShowIcon && !realViewPermission(props.channel)) {
+            return React.createElement(ReactNative.View, { style: { position: "relative" } },
+              icon,
+              React.createElement(ReactNative.Text, { style: { position: "absolute", right: -3, bottom: -3, fontSize: 8, color: "#e5b94f", backgroundColor: "#211d2c" } }, "LOCK")
+            );
+          }
+          return icon;
+        }));
+      } else console.warn("[KiraUtils/ColorfulChannels] BaseChannelIcon was unavailable.");
+
+      const ChannelInfo = safeFind(findByName, "ChannelInfo", false);
+      if (ChannelInfo) addCleanup(patches, after("default", ChannelInfo, ([props], rendered) => {
+        if (!storage.colorfulChannelsNsfwTag || !props?.channel?.nsfw_ || !React.isValidElement(rendered)) return rendered;
+        const tag = React.createElement(ReactNative.View, { style: { alignSelf: "flex-start", backgroundColor: "#b52b3a", borderRadius: 5, paddingHorizontal: 5, paddingVertical: 1, marginBottom: 3 } },
+          React.createElement(ReactNative.Text, { style: { color: "#ffffff", fontSize: 10, fontWeight: "800" } }, "NSFW")
+        );
+        return React.createElement(React.Fragment, null, tag, rendered);
+      }));
+      return () => cleanup(patches);
+    }
+
+    function startFastCopyUserID() {
+      const patches = [];
+      const menu = safeFind(findByProps, "openLazy", "hideActionSheet");
+      const ActionSheetRow = safeFind(findByProps, "ActionSheetRow")?.ActionSheetRow;
+      if (!menu || !ActionSheetRow) return () => {};
+      addCleanup(patches, before("openLazy", menu, ([component, key, props]) => {
+        if (typeof key !== "string" || !key.includes("MessageLongPress")) return;
+        const message = props?.message ?? props?.props?.message;
+        const userId = String(message?.author?.id ?? message?.authorId ?? "");
+        if (!/^[0-9]{17,20}$/.test(userId)) return;
+        Promise.resolve(component).then(instance => {
+          if (!instance) return;
+          const target = typeof instance.default === "function" ? instance : typeof instance.default?.type === "function" ? instance.default : null;
+          if (!target) return;
+          const prop = target === instance ? "default" : "type";
+          let unpatch;
+          unpatch = after(prop, target, (_args, tree) => {
+            const groups = findInReactTree(tree, node => Array.isArray(node) && node[0]?.type?.name === "ActionSheetRowGroup");
+            if (!groups?.length) return tree;
+            if (findInReactTree(tree, node => Array.isArray(node) && node.some(row => row?.key === "kira-copy-user-id"))) return tree;
+            const button = React.createElement(ActionSheetRow, {
+              key: "kira-copy-user-id", label: "Copy User ID",
+              icon: React.createElement(ActionSheetRow.Icon, { source: getAssetIDByName("ic_copy_id") ?? getAssetIDByName("ic_message_copy") }),
+              onPress: () => {
+                try { ReactNative.Clipboard?.setString?.(userId); showToast("Copied user ID: " + userId); }
+                catch (error) { console.error("[KiraUtils/FastCopyUserID]", error); showToast("Could not copy this ID."); }
+                try { menu.hideActionSheet?.(); } catch {}
+              }
+            });
+            const rows = findInReactTree(groups[0], node => Array.isArray(node) && node.some(row => row?.type?.name === "ActionSheetRow"));
+            if (rows) rows.unshift(button);
+            else groups.unshift(React.createElement(ActionSheetRow.Group, null, button));
+            return tree;
+          });
+          patches.push(() => unpatch?.());
+        }).catch(error => console.warn("[KiraUtils/FastCopyUserID]", error));
+      }));
+      return () => cleanup(patches);
+    }
+
+    function startSendSpotifyInvite() {
+      const patches = [];
+      const header = safeFind(vendetta.metro.findByTypeName, "MediaKeyboardListHeader");
+      const spotify = safeFind(findByStoreName, "SpotifyStore");
+      const selected = safeFind(findByStoreName, "SelectedChannelStore");
+      const drafts = safeFind(findByStoreName, "DraftStore");
+      const sender = safeFind(findByProps, "sendMessage", "revealMessage");
+      const clearDraft = safeFind(findByProps, "clearDraft");
+      if (!header || typeof sender?.sendMessage !== "function") return () => {};
+      addCleanup(patches, after("type", header, (_args, rendered) => {
+        if (!React.isValidElement(rendered) || !rendered.props) return rendered;
+        const children = React.Children.toArray(rendered.props.children);
+        if (children.some(child => child?.key === "kira-spotify-invite")) return rendered;
+        const activity = spotify?.getActivity?.();
+        const button = React.createElement(ReactNative.Pressable, {
+          key: "kira-spotify-invite", disabled: !activity?.party?.id,
+          onPress: () => {
+            try {
+              const channelId = selected?.getChannelId?.();
+              if (!channelId || !activity?.party?.id) return showToast("Start Spotify first to send an invite.");
+              sender.sendMessage(channelId, { content: drafts?.getDraft?.(channelId, 0) ?? "", tts: false, invalidEmojis: [], validNonShortcutEmojis: [] }, true, { activityAction: { activity, type: 3 } });
+              clearDraft?.clearDraft?.(channelId, 0);
+              showToast("Spotify invite sent.");
+            } catch (error) { console.error("[KiraUtils/SpotifyInvite]", error); showToast("Could not send Spotify invite."); }
+          },
+          style: { minHeight: 36, paddingHorizontal: 10, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: activity?.party?.id ? "#1f8d54" : "#4a4651", marginHorizontal: 5 }
+        }, React.createElement(ReactNative.Text, { style: { color: "#fff", fontWeight: "700", fontSize: 12 } }, "Spotify invite"));
+        return React.cloneElement(rendered, { children: [...children, button] });
+      }));
+      return () => cleanup(patches);
+    }
+
+    function startSpotifyListenAlong() {
+      const patches = [];
+      const spotify = safeFind(findByStoreName, "SpotifyStore");
+      const protocol = safeFind(findByStoreName, "SpotifyProtocolStore");
+      const userStore = safeFind(findByStoreName, "UserStore");
+      const player = safeFind(findByProps, "play", "sync");
+      const playModule = safeFind(findByProps, "SpotifyPlayButton");
+      const playOnSpotify = safeFind(findByProps, "PlayOnSpotifyButton");
+      const ListenButton = ({ activity }) => {
+        const targetId = String(activity?.party?.id ?? "").split(":")[1] || "";
+        const selfId = userStore?.getCurrentUser?.()?.id;
+        const current = spotify?.getActivity?.();
+        const playable = !!spotify?.hasConnectedAccount?.() && (!!spotify?.getActiveSocketAndDevice?.() || !!protocol?.isProtocolRegistered?.());
+        const reason = !targetId ? "No Spotify activity found" : String(selfId) === targetId ? "You cannot listen along with yourself" : current?.party?.id === activity?.party?.id ? "Already listening along" : !playable ? "Spotify is not detected" : "";
+        return React.createElement(ReactNative.Pressable, {
+          disabled: !!reason,
+          onPress: async () => {
+            if (reason) return showToast(reason);
+            try {
+              if (spotify?.getActivity?.()) await player?.sync?.(activity, targetId);
+              else await player?.play?.(activity, targetId);
+              showToast("Spotify listen-along requested.");
+            } catch (error) { console.error("[KiraUtils/SpotifyListenAlong]", error); showToast("Spotify listen-along failed."); }
+          },
+          style: { marginTop: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9, backgroundColor: reason ? "#383440" : "#1f8d54", alignSelf: "flex-start", opacity: reason ? 0.65 : 1 }
+        }, React.createElement(ReactNative.Text, { style: { color: "#fff", fontSize: 12, fontWeight: "700" } }, "Listen Along"));
+      };
+      const SpotifyPlayButton = playModule?.SpotifyPlayButton;
+      if (SpotifyPlayButton?.prototype?.render) addCleanup(patches, after("render", SpotifyPlayButton.prototype, (_args, rendered) => {
+        const activity = rendered?._owner?.stateNode?.props?.activity;
+        if (!activity?.party?.id || !React.isValidElement(rendered)) return rendered;
+        return React.createElement(React.Fragment, null, rendered, React.createElement(ListenButton, { activity, key: "kira-listen-along" }));
+      }));
+      if (playOnSpotify && typeof playOnSpotify.PlayOnSpotifyButton === "function") addCleanup(patches, after("PlayOnSpotifyButton", playOnSpotify, ([props], rendered) => {
+        const activity = props?.activity;
+        if (!activity?.party?.id) return rendered;
+        return React.createElement(React.Fragment, null, rendered, React.createElement(ListenButton, { activity, key: "kira-listen-along" }));
+      }));
+      if (!patches.length) console.warn("[KiraUtils/SpotifyListenAlong] Spotify player controls are unavailable.");
+      return () => cleanup(patches);
+    }
+
+    function startInfoCommands() {
+      const patches = [];
+      const api = safeFind(findByProps, "get", "post");
+      const sender = safeFind(findByProps, "sendMessage");
+      const send = async (ctx, embed) => {
+        const channelId = ctx?.channel?.id ?? ctx?.channelId;
+        if (!channelId || typeof sender?.sendMessage !== "function") return showToast("Could not resolve the current channel.");
+        await sender.sendMessage(channelId, { content: "", embeds: [embed] });
+      };
+      const field = (name, value, inline = true) => ({ name, value: String(value ?? "Unknown").slice(0, 1024), inline });
+      const base = { color: 0xb99bff, type: "rich" };
+      const commands = [
+        { name: "userinfo", description: "Get information about a user ID", options: [{ name: "user_id", description: "Discord user ID", type: 3, required: true }], execute: async (args, ctx) => {
+          try {
+            const id = String(args?.find(item => item.name === "user_id")?.value ?? "").trim();
+            if (!/^[0-9]{17,20}$/.test(id)) return showToast("Enter a valid Discord user ID.");
+            const user = (await api?.get?.({ url: "/users/" + id }))?.body;
+            if (!user?.id) return showToast("User not found.");
+            const avatar = user.avatar ? "https://cdn.discordapp.com/avatars/" + id + "/" + user.avatar + "." + (user.avatar.startsWith("a_") ? "gif" : "png") + "?size=256" : undefined;
+            const created = Math.floor((Number(BigInt(id) >> 22n) + 1420070400000) / 1000);
+            await send(ctx, { ...base, title: "User Information", author: { name: user.global_name || user.username, icon_url: avatar }, thumbnail: avatar ? { url: avatar } : undefined, fields: [field("Username", user.username), field("Display name", user.global_name || user.username), field("ID", id, false), field("Bot", user.bot ? "Yes" : "No"), field("Created", "<t:" + created + ":R>", false), field("Public flags", user.public_flags ?? 0, false)] });
+          } catch (error) { console.error("[KiraUtils/InfoCommands]", error); showToast("User info request failed."); }
+        }},
+        { name: "serverinfo", description: "Get information about a server ID", options: [{ name: "server_id", description: "Discord server ID", type: 3, required: true }], execute: async (args, ctx) => {
+          try {
+            const id = String(args?.find(item => item.name === "server_id")?.value ?? "").trim();
+            if (!/^[0-9]{17,20}$/.test(id)) return showToast("Enter a valid server ID.");
+            const guild = (await api?.get?.({ url: "/guilds/" + id + "?with_counts=true" }))?.body;
+            if (!guild?.id) return showToast("Server info is not available to this account.");
+            const icon = guild.icon ? "https://cdn.discordapp.com/icons/" + id + "/" + guild.icon + ".png?size=256" : undefined;
+            await send(ctx, { ...base, title: guild.name || "Server Information", thumbnail: icon ? { url: icon } : undefined, fields: [field("ID", id, false), field("Owner ID", guild.owner_id), field("Members", guild.approximate_member_count ?? guild.member_count ?? "Unknown"), field("Online", guild.approximate_presence_count ?? "Unknown"), field("Verification", guild.verification_level ?? "Unknown"), field("Features", (guild.features || []).slice(0, 12).join(", ") || "None", false)] });
+          } catch (error) { console.error("[KiraUtils/InfoCommands]", error); showToast("Server info request failed."); }
+        }},
+        { name: "inviteinfo", description: "Get information about a Discord invite", options: [{ name: "invite_code", description: "Invite code or URL", type: 3, required: true }], execute: async (args, ctx) => {
+          try {
+            const raw = String(args?.find(item => item.name === "invite_code")?.value ?? "").trim();
+            const code = raw.replace(/^https?:\/\/(?:www\.)?(?:discord\.gg|discord(?:app)?\.com\/invite)\//i, "").split(/[?#/]/)[0];
+            if (!code || code.length > 64) return showToast("Enter a valid invite code or URL.");
+            const invite = (await api?.get?.({ url: "/invites/" + encodeURIComponent(code) + "?with_counts=true&with_expiration=true" }))?.body;
+            if (!invite) return showToast("Invite not found or unavailable.");
+            const guild = invite.guild;
+            const fields = [field("Invite code", code), field("Channel", invite.channel?.name || invite.channel?.id || "Unknown"), field("Expires", invite.expires_at || "Never"), field("Uses", invite.uses ?? "Unknown")];
+            if (guild) fields.unshift(field("Server", guild.name), field("Server ID", guild.id));
+            if (invite.approximate_member_count != null) fields.push(field("Members", invite.approximate_member_count), field("Online", invite.approximate_presence_count ?? "Unknown"));
+            await send(ctx, { ...base, title: "Invite Information", description: guild?.description || undefined, fields });
+          } catch (error) { console.error("[KiraUtils/InfoCommands]", error); showToast("Invite info request failed."); }
+        }}
+      ];
+      for (const command of commands) {
+        try {
+          const unregister = vendetta.commands?.registerCommand?.(command);
+          if (typeof unregister === "function") patches.push(unregister);
+          else console.warn("[KiraUtils/InfoCommands] Command API did not return an unregister callback for " + command.name);
+        } catch (error) { console.warn("[KiraUtils/InfoCommands] Could not register " + command.name, error); }
+      }
+      return () => cleanup(patches);
+    }
+
+    function startValidUser() {
+      const patches = [];
+      const menu = safeFind(findByProps, "openLazy", "hideActionSheet");
+      const rowModule = safeFind(findByProps, "ActionSheetRow");
+      const ActionSheetRow = rowModule?.ActionSheetRow;
+      const dispatcher = safeFind(findByProps, "dispatch", "subscribe") || FluxDispatcher;
+      const api = safeFind(findByProps, "get", "post", "del", "patch") || safeFind(findByProps, "get", "post");
+      const userStore = safeFind(findByStoreName, "UserStore") || safeFind(findByProps, "getUser", "getCurrentUser");
+      const userUtils = safeFind(findByProps, "fetchProfile", "getUser", "fetchUser");
+      const avatarUtils = safeFind(findByProps, "getDefaultAvatarURL", "getUserAvatarURL");
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const isCached = id => !!userStore?.getUser?.(id);
+      const userIdRegex = /<@!?([0-9]{17,20})>/g;
+      const extractIds = message => {
+        const ids = new Set();
+        const scan = value => {
+          if (typeof value === "string") {
+            userIdRegex.lastIndex = 0;
+            for (const match of value.matchAll(userIdRegex)) if (!isCached(match[1])) ids.add(match[1]);
+          } else if (Array.isArray(value)) value.forEach(scan);
+          else if (value && typeof value === "object") {
+            for (const [key, item] of Object.entries(value)) if (/content|title|description|name|value|text|raw/i.test(key)) scan(item);
+          }
+        };
+        scan(message?.content);
+        scan(message?.embeds);
+        scan(message?.components);
+        scan(message?.messageSnapshots);
+        return [...ids];
+      };
+      const fetchUser = async id => {
+        if (isCached(id)) return;
+        try {
+          if (typeof userUtils?.fetchUser === "function") {
+            await userUtils.fetchUser(id);
+            if (isCached(id)) return;
+          }
+        } catch {}
+        try {
+          const response = await api?.get?.({ url: "/users/" + id });
+          if (response?.status === 200 && response.body) dispatcher?.dispatch?.({ type: "USER_UPDATE", user: response.body });
+        } catch (error) {
+          if (error?.status === 404 || error?.body?.code === 10013) dispatcher?.dispatch?.({
+            type: "USER_UPDATE", user: { id, username: "Deleted User", global_name: null, globalName: null, discriminator: "0000", avatar: null, bot: false, system: false, flags: 0, publicFlags: 0, public_flags: 0, guildMemberAvatars: {} }
+          });
+          else console.warn("[KiraUtils/ValidUser] User lookup failed for " + id, error);
+        }
+      };
+      const forceRefresh = async message => {
+        const channelId = message?.channel_id ?? message?.channelId;
+        if (!channelId || !message?.id) return;
+        dispatcher?.dispatch?.({ type: "MESSAGE_UPDATE", message: { id: message.id, channel_id: channelId, content: String(message.content || " ") + "\u200b " } });
+        await sleep(120);
+        dispatcher?.dispatch?.({
+          type: "MESSAGE_UPDATE",
+          message: { id: message.id, channel_id: channelId, content: message.content, attachments: message.attachments, embeds: message.embeds, components: message.components, flags: message.flags }
+        });
+      };
+      const fix = async message => {
+        const ids = extractIds(message);
+        if (!ids.length) return;
+        showToast("Checking " + ids.length + " unresolved mention(s)…");
+        for (let i = 0; i < ids.length; i++) {
+          await fetchUser(ids[i]);
+          if (i < ids.length - 1) await sleep(220);
+        }
+        await sleep(180);
+        await forceRefresh(message);
+        showToast("Finished checking unresolved mentions.");
+      };
+      if (avatarUtils?.getDefaultAvatarURL) {
+        addCleanup(patches, instead("getDefaultAvatarURL", avatarUtils, (args, original) => {
+          try {
+            const id = args?.[0];
+            if (id && typeof id === "object") return original(String(id.id ?? "0"), typeof id.discriminator === "string" ? id.discriminator : "0000");
+            return original(...args);
+          } catch (error) {
+            console.warn("[KiraUtils/ValidUser] Avatar fallback guard", error);
+            return original("0", "0000");
+          }
+        }));
+      }
+      if (menu && ActionSheetRow) addCleanup(patches, before("openLazy", menu, ([component, key, props]) => {
+        if (typeof key !== "string" || !key.includes("MessageLongPress")) return;
+        const message = props?.message ?? props?.props?.message;
+        if (!message || !extractIds(message).length) return;
+        Promise.resolve(component).then(instance => {
+          if (!instance) return;
+          const target = typeof instance.default === "function" ? instance : typeof instance.default?.type === "function" ? instance.default : null;
+          if (!target) return;
+          const prop = target === instance ? "default" : "type";
+          let unpatch;
+          unpatch = after(prop, target, (_args, tree) => {
+            const groups = findInReactTree(tree, node => Array.isArray(node) && node[0]?.type?.name === "ActionSheetRowGroup");
+            if (!groups?.length) return tree;
+            if (findInReactTree(tree, node => Array.isArray(node) && node.some(row => row?.key === "kira-valid-user-fix"))) return tree;
+            const count = extractIds(message).length;
+            const button = React.createElement(ActionSheetRow, {
+              key: "kira-valid-user-fix",
+              label: count === 1 ? "Fix 1 @Mention" : "Fix " + count + " @Mentions",
+              icon: React.createElement(ActionSheetRow.Icon, { source: getAssetIDByName("ic_mention_24px") }),
+              onPress: () => { try { menu.hideActionSheet?.(); } catch {} fix(message); }
+            });
+            const rows = findInReactTree(groups[0], node => Array.isArray(node) && node.some(row => row?.type?.name === "ActionSheetRow"));
+            if (rows) rows.unshift(button);
+            else groups.unshift(React.createElement(ActionSheetRow.Group, null, button));
+            return tree;
+          });
+          patches.push(() => unpatch?.());
+        }).catch(error => console.warn("[KiraUtils/ValidUser] Menu patch failed.", error));
+      }));
+      return () => cleanup(patches);
+    }
+
     function startHiddenChannels() {
       const patches = [];
       const permissionModule = safeFind(findByProps, "getChannelPermissions", "can") || safeFind(findByProps, "can", "initialize");
