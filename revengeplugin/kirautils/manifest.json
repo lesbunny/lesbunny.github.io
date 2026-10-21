@@ -1,6 +1,6 @@
 {
   "name": "KiraUtils",
-  "description": "All-in-one grouped utility collection: Hide Blocked/ignored, Copy Bios, catbox.moe, Silent Messages, Anonymous File Names, Hidden Channels, Local Edit, Staff Tags, Tenor GIF Fix and MiniMod.",
+  "description": "All-in-one toggleable utility collection: Hide Blocked/ignored, Copy Bios, catbox.moe, Silent Messages, Anonymous File Names, Hidden Channels, Local Edit with optional restart cleanup, Staff Tags, Tenor GIF Fix, MiniMod and original AzzyUtils utilities.",
   "authors": [
     {
       "name": "Kira",
@@ -32,8 +32,8 @@
     }
   ],
   "main": "index.js",
-  "version": "2.2.0",
-  "hash": "KiraUtils-2.2.0-20261021",
+  "version": "2.3.0",
+  "hash": "KiraUtils-2.3.0-20261021",
   "vendetta": {
     "icon": "ic_progress_wrench_24px"
   }
