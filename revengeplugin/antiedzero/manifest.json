@@ -1,0 +1,20 @@
+{
+  "name": "AntiEd Zero",
+  "description": "Persistent local edit/deletion history with a searchable-style settings log. Logs and settings persist locally across app restarts.",
+  "authors": [
+    {
+      "name": "Kira",
+      "id": "925904715525554206"
+    },
+    {
+      "name": "Angelw0lf (upstream adaptation)",
+      "id": "692632336961110087"
+    }
+  ],
+  "main": "index.js",
+  "version": "2.0.0",
+  "hash": "Kira-antiedzero-2.0.0-20261021",
+  "vendetta": {
+    "icon": "ic_edit_24px"
+  }
+}
