@@ -7,6 +7,8 @@
     const { findInReactTree } = vendetta.utils;
     const rawColors = vendetta.ui.rawColors || {};
     const MAX_TAGS = ["WEBHOOK", "OWNER", "ADMIN", "STAFF", "MOD", "VC Mod", "Chat Mod"];
+    const Messages = vendetta.metro.common.i18n?.Messages || {};
+    const BUILT_IN_TAGS = [Messages.AI_TAG, Messages.BOT_TAG_BOT, Messages.BOT_TAG_SERVER, Messages.SYSTEM_DM_TAG_SYSTEM, Messages.GUILD_AUTOMOD_USER_BADGE_TEXT, Messages.REMIXING_TAG].filter(Boolean);
     const featureCleanups = Object.create(null);
     let enabled = false;
 
@@ -61,7 +63,7 @@
         try {
           const perms = computePermissions({ user, context: guild, overwrites: channel?.permissionOverwrites });
           permissions = Object.entries(Permissions).filter(([, bit]) => {
-            try { return (perms & bit) !== 0; } catch { return false; }
+            try { return Boolean(perms & bit); } catch { return false; }
           }).map(([name]) => name);
         } catch {}
       }
@@ -102,7 +104,7 @@
       if (getTagProperties) {
         addCleanup(cleanups, after("default", getTagProperties, ([props], ret) => {
           const message = props?.message;
-          if (!message || !ret || ret.tagText) return;
+          if (!message || !ret || BUILT_IN_TAGS.includes(ret.tagText)) return;
           const channel = ChannelStore?.getChannel?.(message.channel_id);
           const guild = GuildStore?.getGuild?.(channel?.guild_id);
           const tag = getStaffTag(guild, channel, message.author);
@@ -124,7 +126,7 @@
         addCleanup(cleanups, after("default", DisplayName, ([{ guildId, channelId, user }], ret) => {
           if (!ret || !user) return;
           const existing = findInReactTree(ret, c => c?.type?.Types);
-          if (existing && MAX_TAGS.includes(TagModule.getBotLabel?.(existing.props?.type))) return;
+          if (existing && BUILT_IN_TAGS.includes(TagModule.getBotLabel?.(existing.props?.type))) return;
           const guild = GuildStore?.getGuild?.(guildId);
           const channel = ChannelStore?.getChannel?.(channelId);
           const tag = getStaffTag(guild, channel, user);
