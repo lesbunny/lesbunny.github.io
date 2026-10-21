@@ -10,6 +10,8 @@
     const Messages = vendetta.metro.common.i18n?.Messages || {};
     const BUILT_IN_TAGS = [Messages.AI_TAG, Messages.BOT_TAG_BOT, Messages.BOT_TAG_SERVER, Messages.SYSTEM_DM_TAG_SYSTEM, Messages.GUILD_AUTOMOD_USER_BADGE_TEXT, Messages.REMIXING_TAG].filter(Boolean);
     const featureCleanups = Object.create(null);
+    const Messages = vendetta.metro.common.i18n?.Messages || {};
+    const BUILT_IN_TAGS = [Messages.AI_TAG, Messages.BOT_TAG_BOT, Messages.BOT_TAG_SERVER, Messages.SYSTEM_DM_TAG_SYSTEM, Messages.GUILD_AUTOMOD_USER_BADGE_TEXT, Messages.REMIXING_TAG].filter(Boolean);
     let enabled = false;
 
     const safeFind = (fn, ...args) => { try { return typeof fn === "function" ? fn(...args) : null; } catch { return null; } };
@@ -21,16 +23,14 @@
 
     function parseTenorGifURL(url) {
       if (typeof url !== "string") return;
-      try {
-        const u = new URL(url);
-        if (!u.hostname.endsWith(".tenor.com")) return;
-        const parts = u.pathname.split("/").filter(Boolean);
-        if (parts.length < 2) return;
-        const id = parts[0], file = parts[1];
-        if (!id || !file) return;
-        const baseId = id.slice(0, -2) + "AC";
-        return "https://" + u.hostname + "/" + baseId + "/" + file.split(".")[0] + ".gif";
-      } catch { return; }
+      const segments = url.split("/");
+      const hostIndex = segments.findIndex(segment => segment.endsWith(".tenor.com"));
+      if (hostIndex < 0) return;
+      const [host, id, file] = segments.slice(hostIndex, hostIndex + 3);
+      if (!host || !id || !file) return;
+      const filename = file.split(".")[0];
+      if (!filename) return;
+      return "https://" + host + "/" + id.slice(0, -2) + "AC/" + filename + ".gif";
     }
 
     function startTenorFix() {
@@ -163,6 +163,30 @@
       return () => cleanup(cleanups);
     }
 
+    function startMiniMod() {
+      const GuildMemberStore = safeFind(findByStoreName, "GuildMemberStore");
+      const nativeProxy = globalThis.window?.nativeModuleProxy ?? globalThis.nativeModuleProxy;
+      const chatModule = nativeProxy?.NativeChatModule ?? nativeProxy?.DCDChatManager;
+      if (!chatModule || typeof chatModule.updateRows !== "function") {
+        console.warn("[KiraUtils/MiniMod] Native chat row module was not found on this client.");
+        return () => {};
+      }
+      return before("updateRows", chatModule, args => {
+        try {
+          const rows = JSON.parse(args[1]);
+          if (!Array.isArray(rows) || !rows.some(row => row && "message" in row)) return;
+          const timedOut = GuildMemberStore?.getCommunicationDisabledUserMap?.() ?? {};
+          const now = Date.now();
+          for (const row of rows) {
+            if (row?.type !== 1 || !row?.message) continue;
+            const expiresAt = new Date(timedOut[row.message.guildId + "-" + row.message.authorId]).getTime();
+            if (Number.isFinite(expiresAt) && expiresAt > now) row.message.communicationDisabled = true;
+          }
+          args[1] = JSON.stringify(rows);
+        } catch (error) { console.warn("[KiraUtils/MiniMod] Could not annotate timeout status.", error); }
+      });
+    }
+
     function setFeature(id, value) {
       storage.toggle[id] = !!value;
       if (featureCleanups[id]) { try { featureCleanups[id](); } catch {} delete featureCleanups[id]; }
@@ -171,6 +195,7 @@
         if (id === "staffTags") featureCleanups[id] = startStaffTags();
         if (id === "tenorGifFix") featureCleanups[id] = startTenorFix();
         if (id === "notype") featureCleanups[id] = startNoType();
+        if (id === "minimod") featureCleanups[id] = startMiniMod();
       } catch (error) {
         console.warn("[KiraUtils] Could not enable " + id, error);
       }
@@ -198,6 +223,8 @@
         toggle("staffTags", "Staff Tags", "Show permission-based tags in message and user name rows."),
         storage.toggle.staffTags ? roleColor : null,
         toggle("tenorGifFix", "Tenor GIF Fix", "Use the GIF rendition for supported Tenor downloads instead of video files."),
+        toggle("minimod", "MiniMod", "Show timeout status indicators in chat rows."),
+        label("NexxUtils-inspired features: Tenor GIF Fix and MiniMod timeout indicators.", { color: "#a99fbc", fontSize: 12, marginTop: 14 }),
         label("History / logs are not part of KiraUtils. Use AntiEd or AntiEd Zero for persistent local edit history.", { color: "#a99fbc", fontSize: 12, marginTop: 16 })
       );
     }
@@ -207,10 +234,11 @@
       storage.toggle.notype ??= false;
       storage.toggle.staffTags ??= false;
       storage.toggle.tenorGifFix ??= false;
+      storage.toggle.minimod ??= false;
       storage.useRoleColor ??= false;
       enabled = true;
       globalThis.__kiraUtilsLive = { setFeature };
-      for (const id of ["notype", "staffTags", "tenorGifFix"]) if (storage.toggle[id]) setFeature(id, true);
+      for (const id of ["notype", "staffTags", "tenorGifFix", "minimod"]) if (storage.toggle[id]) setFeature(id, true);
     }
     function unload() {
       enabled = false;
