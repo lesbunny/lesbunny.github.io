@@ -397,6 +397,7 @@
       const viewChannel = constants?.Permissions?.VIEW_CHANNEL;
       const types = safeFind(findByProps, "ChannelTypes")?.ChannelTypes || {};
       storage.hiddenChannelsShowIcon ??= true;
+      storage.hiddenChannelsShowPopup ??= true;
       if (!permissionModule || typeof permissionModule.can !== "function" || viewChannel == null) {
         console.warn("[KiraUtils/HiddenChannels] Permission APIs were not found.");
         return () => {};
@@ -413,6 +414,33 @@
         return !allowed;
       };
       addCleanup(patches, after("can", permissionModule, ([permission, channel], result) => permission === viewChannel && !channel?.realCheck ? true : result));
+      const transition = safeFind(findByProps, "transitionToGuild");
+      if (transition) {
+        for (const key of Object.keys(transition)) {
+          if (typeof transition[key] !== "function") continue;
+          addCleanup(patches, instead(key, transition, (args, original) => {
+            const route = args?.[0];
+            const match = typeof route === "string" ? route.match(/(\\d+)$/) : null;
+            const channel = match ? channels?.getChannel?.(match[1]) : null;
+            if (!channel || !isHidden(channel)) return original(...args);
+            const confirm = globalThis.vendetta?.ui?.alerts?.showConfirmationAlert;
+            if (!storage.hiddenChannelsShowPopup || typeof confirm !== "function") return original(...args);
+            confirm({
+              title: "This channel is hidden.",
+              content: React.createElement(ReactNative.View, { style: { gap: 6 } },
+                React.createElement(ReactNative.Text, { style: { fontWeight: "700" } }, channel.name || "Hidden channel"),
+                React.createElement(ReactNative.Text, null, channel.topic || "The client can only show information already cached locally; it cannot grant server permissions or fetch messages it has not received.")
+              ),
+              confirmText: "View Anyway",
+              cancelText: "Cancel",
+              onConfirm: () => original(...args)
+            });
+            return {};
+          }));
+        }
+      } else {
+        console.warn("[KiraUtils/HiddenChannels] transitionToGuild is unavailable on this client.");
+      }
       const ChannelInfo = safeFind(findByName, "ChannelInfo", false);
       if (ChannelInfo) addCleanup(patches, after("default", ChannelInfo, ([props], rendered) => {
         if (!storage.hiddenChannelsShowIcon || !props?.channel || !isHidden(props.channel)) return rendered;
@@ -649,7 +677,8 @@
         group("PROFILE & CHANNELS", "Copy profile text or inspect channels your permissions hide.", [
           toggle("copyBios", "Copy Bios", "Make profile bio text selectable for normal copying."),
           toggle("hiddenChannels", "Hidden Channels", "Permit viewing channels hidden by VIEW_CHANNEL permissions. Use responsibly."),
-          storage.toggle.hiddenChannels ? subToggle("Show lock icon on hidden channels", "hiddenChannelsShowIcon") : null
+          storage.toggle.hiddenChannels ? subToggle("Show lock icon on hidden channels", "hiddenChannelsShowIcon") : null,
+          storage.toggle.hiddenChannels ? subToggle("Confirm before opening hidden channels", "hiddenChannelsShowPopup") : null
         ]),
         group("FIXES & SMALL UTILITIES", "Standalone modules inspired by NexxUtils.", [
           toggle("notype", "No Type", "Suppress the typing indicator for your account."),
