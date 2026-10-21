@@ -1,6 +1,6 @@
 {
   "name": "Local Edit Remastered",
-  "description": "Edit messages locally on this device. Changes are never sent to Discord, saved edits persist by default, and an optional setting clears them on restart.",
+  "description": "Edit messages locally using Discord's normal composer. Local edits persist by default and are never sent to Discord.",
   "authors": [
     {
       "name": "Kira",
@@ -8,8 +8,8 @@
     }
   ],
   "main": "index.js",
-  "version": "1.3.0",
-  "hash": "local-edit-remastered-1.3.0-20261021",
+  "version": "1.3.1",
+  "hash": "local-edit-remastered-1.3.1-20261021",
   "vendetta": {
     "icon": "ic_edit_24px"
   }
