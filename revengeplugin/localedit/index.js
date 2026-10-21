@@ -5,9 +5,18 @@
     const { before, after } = vendetta.patcher;
     const { storage } = vendetta.plugin;
     const { findInReactTree } = vendetta.utils;
+    const { getAssetIDByName } = vendetta.ui.assets || {};
     const log = vendetta.logger || console;
     const { View, Text, ScrollView, Pressable } = ReactNative || {};
     storage.localEdits ??= {};
+    storage.showOwnMessageAction ??= true;
+    storage.clearEditsOnRestart ??= false;
+    const sessionId = globalThis.__localEditSessionId ??=
+      `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (storage.clearEditsOnRestart && storage.sessionId && storage.sessionId !== sessionId) {
+      storage.localEdits = {};
+    }
+    storage.sessionId = sessionId;
     const patches = [];
     let enabled = false;
     let MessageStore, UserStore, ActionSheet, MessageActions;
@@ -116,74 +125,63 @@
     }
 
     const EDITOR_KEY = "LocalEditRemasteredEditor";
-    function editorParts() {
-      const modal = safeFind(findByProps, "AlertModal", "AlertActions") || {};
-      const alerts = safeFind(findByProps, "openAlert", "dismissAlert") || {};
-      return {
-        AlertModal: modal.AlertModal,
-        AlertActionButton: modal.AlertActionButton,
-        TextInput: findSingleExport("TextInput"),
-        Button: findSingleExport("Button"),
-        openAlert: alerts.openAlert,
-        dismissAlert: alerts.dismissAlert
-      };
-    }
-
-    function EditorAlert({ parts, message, initial }) {
-      const [value, setValue] = React.useState(initial);
-      const [error, setError] = React.useState("");
-      const { AlertModal, AlertActionButton, TextInput, Button, dismissAlert } = parts;
-      const save = () => {
-        if (typeof value !== "string" || !value.trim()) {
-          setError("Message text cannot be empty.");
-          return;
-        }
-        if (saveLocalEdit(message, value)) dismissAlert(EDITOR_KEY);
-      };
-      const cancel = () => dismissAlert(EDITOR_KEY);
-      const input = React.createElement(TextInput, {
-        autoFocus: true,
-        isClearable: true,
-        value,
-        onChange: v => {
-          setValue(typeof v === "string" ? v : v?.text ?? "");
-          if (error) setError("");
-        },
-        returnKeyType: "done",
-        onSubmitEditing: save,
-        state: error ? "error" : undefined,
-        errorMessage: error || undefined
-      });
-      const actions = React.createElement(View, { style: { gap: 8 } },
-        Button
-          ? React.createElement(Button, { text: "Save locally", variant: "primary", onPress: save })
-          : React.createElement(AlertActionButton, { text: "Save locally", variant: "primary", onPress: save }),
-        React.createElement(AlertActionButton, { text: "Cancel", variant: "secondary", onPress: cancel })
-      );
-      return React.createElement(AlertModal, {
-        title: "Edit message locally",
-        content: React.createElement(View, { style: { gap: 16 } },
-          React.createElement(Text, null, "Only your device will show this text."),
-          input
-        ),
-        actions
-      });
-    }
 
     function openEditor(message) {
-      const parts = editorParts();
-      const missing = ["AlertModal", "AlertActionButton", "TextInput", "openAlert", "dismissAlert"]
-        .filter(key => !parts[key]);
-      if (missing.length) {
-        log.error("[localedit] Cannot open local editor; missing client modules:", missing.join(", "));
+      const initial = getEdit(message.id)?.content ?? String(message.content ?? "");
+      const nav = safeFind(findByProps, "pushModal", "popModal");
+      if (typeof nav?.pushModal === "function" && typeof nav?.popModal === "function") {
+        const Screen = () => {
+          const [value, setValue] = React.useState(initial);
+          const Input = ReactNative?.TextInput || findSingleExport("TextInput");
+          const close = () => nav.popModal(EDITOR_KEY);
+          const save = () => { if (saveLocalEdit(message, value)) close(); };
+          const text = (value, style = {}) => React.createElement(Text, { style: { color: "#f5efff", ...style } }, value);
+          const button = (label, onPress, primary = false) => React.createElement(Pressable, {
+            onPress, accessibilityRole: "button",
+            style: { minHeight: 44, borderRadius: 14, paddingHorizontal: 16, alignItems: "center", justifyContent: "center", backgroundColor: primary ? "#cbb7ff" : "#302a40", borderWidth: primary ? 0 : 1, borderColor: "#51465f" }
+          }, React.createElement(Text, { style: { color: primary ? "#27163f" : "#f5efff", fontWeight: "700" } }, label));
+          return React.createElement(View, { style: { flex: 1, backgroundColor: "#171421", paddingHorizontal: 18, paddingTop: 16, paddingBottom: 24 } },
+            React.createElement(View, { style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: 18 } },
+              button("Cancel", close), text("Edit message", { fontSize: 18, fontWeight: "800" }), button("Save", save, true)),
+            text("EDIT LOCALLY", { color: "#cbb7ff", fontSize: 12, fontWeight: "800", letterSpacing: 1, marginBottom: 6 }),
+            text("This changes only what you see on this device. It is never sent to Discord.", { color: "#c9bfd9", fontSize: 13, lineHeight: 18, marginBottom: 14 }),
+            React.createElement(View, { style: { flex: 1, minHeight: 240, borderRadius: 18, borderWidth: 1, borderColor: "#51465f", backgroundColor: "#211d2c", padding: 14 } },
+              Input ? React.createElement(Input, {
+                autoFocus: true, multiline: true, value, onChangeText: next => setValue(String(next ?? "")),
+                placeholder: "Message content", placeholderTextColor: "#9288a5", selectionColor: "#cbb7ff",
+                textAlignVertical: "top", underlineColorAndroid: "transparent",
+                style: { flex: 1, minHeight: 220, color: "#f5efff", fontSize: 16, lineHeight: 23, padding: 0 }
+              }) : text("This client does not expose a multiline text input.")),
+            text("Saved changes are local display overrides, not real message edits.", { color: "#aaa2bf", fontSize: 12, marginTop: 14 }));
+        };
+        try {
+          nav.pushModal({ key: EDITOR_KEY, modal: { key: EDITOR_KEY, modal: Screen, animation: "slide-up", shouldPersistUnderModals: false, closable: true } });
+          return;
+        } catch (error) { log.warn("[localedit] Native editor could not open.", error); }
+      }
+
+      const modal = safeFind(findByProps, "AlertModal", "AlertActions") || {};
+      const alerts = safeFind(findByProps, "openAlert", "dismissAlert") || {};
+      const TextInput = findSingleExport("TextInput");
+      if (!modal.AlertModal || !modal.AlertActionButton || !TextInput || !alerts.openAlert || !alerts.dismissAlert) {
+        log.error("[localedit] No compatible local editor UI was found.");
         return;
       }
-      const initial = getEdit(message.id)?.content ?? String(message.content ?? "");
-      try {
-        parts.openAlert(EDITOR_KEY, React.createElement(EditorAlert, { parts, message, initial }));
-      } catch (error) {
-        log.error("[localedit] Could not open local editor.", error);
+      function EditorFallback() {
+        const [value, setValue] = React.useState(initial);
+        const save = () => { if (saveLocalEdit(message, value)) alerts.dismissAlert(EDITOR_KEY); };
+        return React.createElement(modal.AlertModal, {
+          title: "Edit message locally",
+          content: React.createElement(View, { style: { gap: 12 } },
+            React.createElement(Text, null, "Only your device will show this text."),
+            React.createElement(TextInput, { autoFocus: true, multiline: true, numberOfLines: 8, textAlignVertical: "top", style: { minHeight: 180 }, value, onChange: v => setValue(typeof v === "string" ? v : v?.text ?? "") })),
+          actions: React.createElement(View, { style: { flexDirection: "row", justifyContent: "flex-end", gap: 8 } },
+            React.createElement(modal.AlertActionButton, { text: "Save locally", variant: "primary", onPress: save }),
+            React.createElement(modal.AlertActionButton, { text: "Cancel", variant: "secondary", onPress: () => alerts.dismissAlert(EDITOR_KEY) }))
+        });
       }
+      try { alerts.openAlert(EDITOR_KEY, React.createElement(EditorFallback)); }
+      catch (error) { log.error("[localedit] Could not open local editor.", error); }
     }
 
     const isRow = element => !!element?.props &&
@@ -192,31 +190,31 @@
 
     function addMenuRow(tree, message) {
       const rows = findInReactTree(tree, node => Array.isArray(node) && node.some(isRow));
-      if (!rows) {
-        log.warn("[localedit] Found the message menu but not its action-row list.");
-        return tree;
-      }
+      if (!rows) { log.warn("[localedit] Found the message menu but not its action-row list."); return tree; }
       if (rows.some(row => row?.key === "local-edit-remastered-edit")) return tree;
-      const template = rows.find(isRow);
-      if (!template) return tree;
-
       const currentUser = UserStore?.getCurrentUser?.();
       const authorId = message?.author?.id ?? message?.authorId;
-      if (currentUser?.id && authorId && String(currentUser.id) === String(authorId)) return tree;
+      if (!storage.showOwnMessageAction && currentUser?.id != null && authorId != null && String(currentUser.id) === String(authorId)) return tree;
 
-      const onPress = () => {
-        try { ActionSheet?.hideActionSheet?.(); } catch {}
-        openEditor(message);
-      };
+      const template = rows.find(row => isRow(row) && /edit/i.test(String(row?.props?.label ?? row?.props?.message ?? row?.props?.text ?? ""))) || rows.find(isRow);
+      if (!template) return tree;
+      const onPress = () => { try { ActionSheet?.hideActionSheet?.(); } catch {} openEditor(message); };
+      let icon = template.props?.icon;
+      try {
+        const iconId = getAssetIDByName?.("ic_edit_24px");
+        const RowIcon = safeFind(findByProps, "ActionSheetRow")?.ActionSheetRow?.Icon;
+        if (RowIcon && iconId != null) icon = React.createElement(RowIcon, { source: iconId });
+      } catch {}
       const row = React.cloneElement(template, {
         key: "local-edit-remastered-edit",
-        label: "Edit Locally",
-        onPress
+        label: "Edit Locally", message: "Edit Locally", text: "Edit Locally", title: "Edit Locally",
+        icon, onPress, onPressRow: onPress, action: onPress
       });
-      const unreadIndex = rows.findIndex(item =>
-        /mark unread/i.test(String(item?.props?.label ?? item?.props?.message ?? ""))
-      );
-      rows.splice(unreadIndex < 0 ? rows.length : unreadIndex, 0, row);
+      const index = pattern => rows.findIndex(item => pattern.test(String(item?.props?.label ?? item?.props?.message ?? item?.props?.text ?? item?.props?.title ?? "")));
+      const reply = index(/\breply\b/i), forward = index(/\bforward\b/i), unread = index(/mark unread/i);
+      const actionIndices = [reply, forward].filter(i => i >= 0);
+      const at = actionIndices.length ? Math.min(...actionIndices) : unread >= 0 ? unread : rows.length;
+      rows.splice(at, 0, row);
       return tree;
     }
 
@@ -272,6 +270,15 @@
         React.createElement(Text, { style: { fontSize: 22, fontWeight: "700", color: "#e5ddff", marginBottom: 8 } }, "Local Edit Remastered"),
         React.createElement(Text, { style: { color: "#c9c2dc", marginBottom: 16, lineHeight: 20 } },
           "These edits exist only on this device. They are never sent as Discord message edits."),
+        React.createElement(Pressable, {
+          onPress: () => { storage.showOwnMessageAction = !storage.showOwnMessageAction; refresh(n => n + 1); },
+          style: { alignSelf: "flex-start", backgroundColor: "#55456f", borderRadius: 20, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 12 }
+        }, React.createElement(Text, { style: { color: "#fff", fontWeight: "600" } }, "Show Edit Locally on my own messages: " + (storage.showOwnMessageAction ? "ON" : "OFF"))),
+        React.createElement(Pressable, {
+          onPress: () => { storage.clearEditsOnRestart = !storage.clearEditsOnRestart; refresh(n => n + 1); },
+          style: { alignSelf: "flex-start", backgroundColor: "#302a40", borderWidth: 1, borderColor: "#51465f", borderRadius: 20, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 10 }
+        }, React.createElement(Text, { style: { color: "#f5efff", fontWeight: "600" } }, "Clear local edits on app restart: " + (storage.clearEditsOnRestart ? "ON" : "OFF"))),
+        React.createElement(Text, { style: { color: "#c9bfd9", fontSize: 12, marginBottom: 16 } }, "Off by default, so edits persist across restarts. Turn it on to keep them only for the current app session."),
         React.createElement(Text, { style: { color: "#e5ddff", fontWeight: "600", marginBottom: 12 } }, "Saved local edits: " + entries.length),
         ...entries.map(([id, edit]) => React.createElement(View, {
           key: id, style: { backgroundColor: "#302b42", borderRadius: 14, padding: 14, marginBottom: 10 }
@@ -331,7 +338,7 @@
       catch (error) { log.error("[localedit] Could not register message-update interceptor.", error); }
       patchActionSheet();
       applyToLoaded();
-      log.log("[localedit] Loaded v1.2.0. Look for Edit Locally in another person's long-press menu.");
+      log.log("[localedit] Loaded v1.3.0. Edit Locally appears above Reply/Forward where available.");
     }
 
     return { onLoad: load, onUnload: unload, settings: Settings };
