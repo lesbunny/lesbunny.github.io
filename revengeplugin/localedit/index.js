@@ -1,270 +1,339 @@
 ({
   default: (() => {
-    const v = vendetta;
-    const { findByProps, findByStoreName } = v.metro;
-    const { FluxDispatcher, React, ReactNative } = v.metro.common;
-    const { before, after, instead } = v.patcher;
-    const { storage } = v.plugin;
-    const { getAssetIDByName } = v.ui.assets;
-    const { findInReactTree } = v.utils;
-    const patches = [];
-    const snapshots = new Map();
-    let activeEdit = null;
+    const { findByProps, findByStoreName } = vendetta.metro;
+    const { React, ReactNative, FluxDispatcher } = vendetta.metro.common;
+    const { before, after } = vendetta.patcher;
+    const { storage } = vendetta.plugin;
+    const { findInReactTree } = vendetta.utils;
+    const log = vendetta.logger || console;
+    const { View, Text, ScrollView, Pressable } = ReactNative || {};
     storage.localEdits ??= {};
+    const patches = [];
+    let enabled = false;
+    let MessageStore, UserStore, ActionSheet, MessageActions;
 
     const safeFind = (fn, ...args) => {
       try { return typeof fn === "function" ? fn(...args) : null; } catch { return null; }
     };
-    const sheet = safeFind(findByProps, "openLazy", "hideActionSheet") ||
-      safeFind(findByProps, "open", "hide");
-    const messages = safeFind(findByProps, "startEditMessage", "editMessage") ||
-      safeFind(findByProps, "editMessage");
-    const store = safeFind(findByStoreName, "MessageStore") ||
-      safeFind(findByProps, "getMessage", "getMessages");
-    const userStore = safeFind(findByStoreName, "UserStore") ||
-      safeFind(findByProps, "getCurrentUser");
-    const rowModule = safeFind(findByProps, "ActionSheetRow") ||
-      safeFind(findByProps, "DefaultActionSheetRow");
-    const Forms = (v.ui && v.ui.components && v.ui.components.Forms) || {};
-    const Row = (rowModule && (rowModule.ActionSheetRow || rowModule.DefaultActionSheetRow)) || Forms.FormRow;
-    const RN = ReactNative || {};
-    const { View, Text, Pressable, ScrollView } = RN;
-
+    const findSingleExport = prop => {
+      try {
+        const finder = vendetta.metro && vendetta.metro.find;
+        const mod = typeof finder === "function" ? finder(m => m && m[prop] && Object.keys(m).length === 1) : null;
+        if (mod && mod[prop]) return mod[prop];
+      } catch {}
+      const mod = safeFind(findByProps, prop);
+      return mod && mod[prop] || null;
+    };
     const edits = () => (storage.localEdits ??= {});
     const getEdit = id => edits()[String(id)];
-    const cloneContent = (message, content) => {
-      if (!message || typeof message !== "object") return message;
+
+    function dispatchContent(id, channelId, content) {
       try {
-        return Object.assign(Object.create(Object.getPrototypeOf(message)), message, {
-          content, edited_timestamp: null
+        FluxDispatcher.dispatch({
+          type: "MESSAGE_UPDATE",
+          message: { id: String(id), channel_id: String(channelId), content },
+          __localEditRemastered: true
         });
-      } catch {
-        return { ...message, content, edited_timestamp: null };
+      } catch (error) {
+        log.error("[localedit] Could not refresh the displayed message.", error);
       }
-    };
-    const displayMessage = (message, channelId) => {
+    }
+
+    function withEdit(message) {
       if (!message || message.id == null) return message;
       const edit = getEdit(message.id);
       if (!edit) return message;
-      if (channelId != null && edit.channelId && String(channelId) !== edit.channelId) return message;
-      return cloneContent(message, edit.content);
-    };
-    const clearEdit = id => {
-      id = String(id);
-      const old = getEdit(id);
-      if (!old) return;
-      delete edits()[id];
-      try {
-        const current = store && store.getMessage && store.getMessage(old.channelId, id);
-        FluxDispatcher && FluxDispatcher.dispatch && FluxDispatcher.dispatch({
-          type: "MESSAGE_UPDATE",
-          message: {
-            ...(current || {}),
-            id,
-            channel_id: old.channelId,
-            content: old.originalContent,
-            edited_timestamp: null
-          }
-        });
-      } catch (e) {
-        console.warn("[localedit] Could not refresh the message after clearing its edit.", e);
-      }
-    };
-
-    function findRows(tree) {
-      if (typeof findInReactTree !== "function") return null;
-      try {
-        return findInReactTree(tree, node => Array.isArray(node) && node[0] && node[0].type && node[0].type.name === "ButtonRow") || null;
-      } catch { return null; }
+      const channelId = message.channel_id ?? message.channelId;
+      if (channelId != null && edit.channelId && String(channelId) !== String(edit.channelId)) return message;
+      return { ...message, content: edit.content };
     }
 
-    function startLocalEdit(message) {
-      const channelId = String((message && (message.channel_id || message.channelId)) || "");
-      const messageId = String((message && message.id) || "");
-      if (!channelId || !messageId) return;
-      const prior = getEdit(messageId);
-      snapshots.set(messageId, {
-        channelId,
-        originalContent: prior ? prior.originalContent : String(message.content || "")
-      });
-      activeEdit = { channelId, messageId };
-      try { sheet && sheet.hideActionSheet && sheet.hideActionSheet(); } catch {}
+    function processList(list) {
+      return list.map(item => Array.isArray(item) ? processList(item) : withEdit(item));
+    }
+
+    function interceptor(action) {
+      if (!enabled || !action?.type || action.__localEditRemastered) return false;
       try {
-        if (messages && typeof messages.startEditMessage === "function") {
-          messages.startEditMessage(channelId, messageId, String(message.content || ""));
-        } else if (messages && typeof messages.openEditBox === "function") {
-          messages.openEditBox(channelId, messageId, String(message.content || ""));
-        } else {
-          activeEdit = null;
-          console.warn("[localedit] Native message editor was not found on this Discord build.");
+        const message = action.message;
+        if (message?.id != null &&
+            (action.type === "MESSAGE_UPDATE" || action.type === "MESSAGE_CREATE")) {
+          const edited = withEdit(message);
+          if (edited !== message) action.message = edited;
         }
-      } catch (e) {
-        activeEdit = null;
-        console.error("[localedit] Could not open message editor.", e);
+        if (Array.isArray(action.messages)) action.messages = processList(action.messages);
+      } catch (error) {
+        log.error("[localedit] Could not apply a saved local edit.", error);
       }
+      return false;
     }
 
-    function patchMessageStore() {
-      if (!store) return;
-      if (typeof store.getMessage === "function") {
-        patches.push(after("getMessage", store, (args, result) =>
-          displayMessage(result, args && args[0] != null ? args[0] : result && result.channel_id)));
-      }
-      if (typeof store.getMessages === "function") {
-        patches.push(after("getMessages", store, (_args, result) => {
-          try {
-            if (Array.isArray(result)) return result.map(m => displayMessage(m));
-            const key = Array.isArray(result && result._array) ? "_array" :
-              Array.isArray(result && result.array) ? "array" : null;
-            if (!key) return result;
-            const copy = Object.assign(Object.create(Object.getPrototypeOf(result)), result);
-            copy[key] = result[key].map(m => displayMessage(m));
-            return copy;
-          } catch (e) {
-            console.warn("[localedit] Could not overlay edited messages.", e);
-            return result;
-          }
-        }));
-      }
+    function saveLocalEdit(message, content) {
+      const id = String(message?.id ?? "");
+      const channelId = String(message?.channel_id ?? message?.channelId ?? "");
+      if (!id || !channelId) return false;
+      const previous = getEdit(id);
+      edits()[id] = {
+        channelId,
+        content,
+        originalContent: previous ? previous.originalContent :
+          (typeof message.content === "string" ? message.content : null)
+      };
+      dispatchContent(id, channelId, content);
+      return true;
     }
 
-    function patchEditor() {
-      if (!messages || typeof messages.editMessage !== "function" || typeof instead !== "function") {
-        console.warn("[localedit] Message edit function unavailable; local edit interception was not installed.");
+    function clearLocalEdit(id) {
+      id = String(id);
+      const previous = getEdit(id);
+      if (!previous) return;
+      delete edits()[id];
+      if (previous.originalContent !== null) {
+        dispatchContent(id, previous.channelId, previous.originalContent);
         return;
       }
-      patches.push(instead("editMessage", messages, (args, original) => {
-        if (!activeEdit) return original(...args);
-        const active = activeEdit;
-        const arg0 = args && args[0], arg1 = args && args[1], arg2 = args && args[2];
-        const candidateId = (arg1 != null && (typeof arg1 === "string" || typeof arg1 === "number"))
-          ? String(arg1)
-          : String((arg0 && (arg0.messageId || arg0.message_id || arg0.id)) || (arg2 && arg2.id) || "");
-        if (!candidateId || candidateId !== active.messageId) return original(...args);
-        const content = typeof arg2 === "string" ? arg2 :
-          (arg2 && typeof arg2.content === "string") ? arg2.content :
-          (arg0 && typeof arg0.content === "string") ? arg0.content : undefined;
-        if (typeof content !== "string") {
-          console.warn("[localedit] Edit request content shape was not recognized.");
-          activeEdit = null;
-          snapshots.delete(candidateId);
-          return original(...args);
+      try {
+        if (MessageActions?.fetchMessages) {
+          MessageActions.fetchMessages({ channelId: previous.channelId, limit: 50, jump: { messageId: id, flash: true } });
+        } else if (MessageActions?.jumpToMessage) {
+          MessageActions.jumpToMessage({ channelId: previous.channelId, messageId: id, flash: true });
+        } else {
+          log.warn("[localedit] Original text was unavailable for message", id, "- reload the channel to restore it.");
         }
-        const current = store && store.getMessage ? store.getMessage(active.channelId, candidateId) : null;
-        const previous = getEdit(candidateId);
-        const snapshot = snapshots.get(candidateId);
-        const originalContent = previous ? previous.originalContent :
-          (snapshot ? snapshot.originalContent : String(current && current.content || ""));
-        edits()[candidateId] = { channelId: active.channelId, content, originalContent };
-        try {
-          FluxDispatcher && FluxDispatcher.dispatch && FluxDispatcher.dispatch({
-            type: "MESSAGE_UPDATE",
-            message: {
-              ...(current || {}),
-              id: candidateId,
-              channel_id: active.channelId,
-              content,
-              edited_timestamp: null,
-              editedTimestamp: null
-            },
-            otherPluginBypass: true,
-            log_edit: false
-          });
-        } catch (e) {
-          console.warn("[localedit] Saved local edit but could not refresh message store.", e);
-        }
-        activeEdit = null;
-        snapshots.delete(candidateId);
-        return undefined;
-      }));
-      if (messages.endEditMessage && typeof after === "function") {
-        patches.push(after("endEditMessage", messages, () => { activeEdit = null; }));
+      } catch (error) {
+        log.error("[localedit] Could not reload the original message.", error);
       }
+    }
+
+    function applyToLoaded() {
+      for (const [id, edit] of Object.entries(edits())) {
+        try {
+          if (MessageStore?.getMessage?.(edit.channelId, id)) dispatchContent(id, edit.channelId, edit.content);
+        } catch (error) {
+          log.warn("[localedit] Could not reapply saved edit to", id, error);
+        }
+      }
+    }
+
+    const EDITOR_KEY = "LocalEditRemasteredEditor";
+    function editorParts() {
+      const modal = safeFind(findByProps, "AlertModal", "AlertActions") || {};
+      const alerts = safeFind(findByProps, "openAlert", "dismissAlert") || {};
+      return {
+        AlertModal: modal.AlertModal,
+        AlertActionButton: modal.AlertActionButton,
+        TextInput: findSingleExport("TextInput"),
+        Button: findSingleExport("Button"),
+        openAlert: alerts.openAlert,
+        dismissAlert: alerts.dismissAlert
+      };
+    }
+
+    function EditorAlert({ parts, message, initial }) {
+      const [value, setValue] = React.useState(initial);
+      const [error, setError] = React.useState("");
+      const { AlertModal, AlertActionButton, TextInput, Button, dismissAlert } = parts;
+      const save = () => {
+        if (typeof value !== "string" || !value.trim()) {
+          setError("Message text cannot be empty.");
+          return;
+        }
+        if (saveLocalEdit(message, value)) dismissAlert(EDITOR_KEY);
+      };
+      const cancel = () => dismissAlert(EDITOR_KEY);
+      const input = React.createElement(TextInput, {
+        autoFocus: true,
+        isClearable: true,
+        value,
+        onChange: v => {
+          setValue(typeof v === "string" ? v : v?.text ?? "");
+          if (error) setError("");
+        },
+        returnKeyType: "done",
+        onSubmitEditing: save,
+        state: error ? "error" : undefined,
+        errorMessage: error || undefined
+      });
+      const actions = React.createElement(View, { style: { gap: 8 } },
+        Button
+          ? React.createElement(Button, { text: "Save locally", variant: "primary", onPress: save })
+          : React.createElement(AlertActionButton, { text: "Save locally", variant: "primary", onPress: save }),
+        React.createElement(AlertActionButton, { text: "Cancel", variant: "secondary", onPress: cancel })
+      );
+      return React.createElement(AlertModal, {
+        title: "Edit message locally",
+        content: React.createElement(View, { style: { gap: 16 } },
+          React.createElement(Text, null, "Only your device will show this text."),
+          input
+        ),
+        actions
+      });
+    }
+
+    function openEditor(message) {
+      const parts = editorParts();
+      const missing = ["AlertModal", "AlertActionButton", "TextInput", "openAlert", "dismissAlert"]
+        .filter(key => !parts[key]);
+      if (missing.length) {
+        log.error("[localedit] Cannot open local editor; missing client modules:", missing.join(", "));
+        return;
+      }
+      const initial = getEdit(message.id)?.content ?? String(message.content ?? "");
+      try {
+        parts.openAlert(EDITOR_KEY, React.createElement(EditorAlert, { parts, message, initial }));
+      } catch (error) {
+        log.error("[localedit] Could not open local editor.", error);
+      }
+    }
+
+    const isRow = element => !!element?.props &&
+      typeof element.props.label === "string" &&
+      typeof element.props.onPress === "function";
+
+    function addMenuRow(tree, message) {
+      const rows = findInReactTree(tree, node => Array.isArray(node) && node.some(isRow));
+      if (!rows) {
+        log.warn("[localedit] Found the message menu but not its action-row list.");
+        return tree;
+      }
+      if (rows.some(row => row?.key === "local-edit-remastered-edit")) return tree;
+      const template = rows.find(isRow);
+      if (!template) return tree;
+
+      const currentUser = UserStore?.getCurrentUser?.();
+      const authorId = message?.author?.id ?? message?.authorId;
+      if (currentUser?.id && authorId && String(currentUser.id) === String(authorId)) return tree;
+
+      const onPress = () => {
+        try { ActionSheet?.hideActionSheet?.(); } catch {}
+        openEditor(message);
+      };
+      const row = React.cloneElement(template, {
+        key: "local-edit-remastered-edit",
+        label: "Edit Locally",
+        onPress
+      });
+      const unreadIndex = rows.findIndex(item =>
+        /mark unread/i.test(String(item?.props?.label ?? item?.props?.message ?? ""))
+      );
+      rows.splice(unreadIndex < 0 ? rows.length : unreadIndex, 0, row);
+      return tree;
     }
 
     function patchActionSheet() {
-      if (!sheet || typeof sheet.openLazy !== "function" || (!Row && !(Forms && Forms.FormRow)) ||
-          typeof before !== "function" || typeof after !== "function") {
-        console.warn("[localedit] Action sheet modules unavailable; context-menu action was not installed.");
+      ActionSheet = safeFind(findByProps, "openLazy", "hideActionSheet");
+      if (!ActionSheet || typeof ActionSheet.openLazy !== "function") {
+        log.error("[localedit] Could not find Discord's lazy action-sheet module. Menu action was not installed.");
         return;
       }
-      patches.push(before("openLazy", sheet, ([component, key, msg]) => {
-        const message = msg && msg.message;
-        if (key !== "MessageLongPressActionSheet" || !message || !message.id) return;
-        const channelId = message.channel_id || message.channelId;
-        if (!channelId) return;
+
+      patches.push(before("openLazy", ActionSheet, ([component, key, props]) => {
+        if (!enabled || typeof key !== "string" || !key.includes("MessageLongPress")) return;
+        const message = props?.message ?? props?.props?.message;
+        if (!message?.id) {
+          log.warn("[localedit] Message menu opened without message props.");
+          return;
+        }
+
         Promise.resolve(component).then(instance => {
-          if (!instance || typeof instance.default !== "function") return;
-          const unpatch = after("default", instance, (_args, rendered) => {
+          if (!enabled || !instance) return;
+          const target = typeof instance.default === "function" ? instance
+            : typeof instance.default?.type === "function" ? instance.default
+            : null;
+          const prop = target === instance ? "default" : "type";
+          if (!target) {
+            log.error("[localedit] Message action sheet has an unsupported component shape.");
+            return;
+          }
+
+          let unpatch;
+          unpatch = after(prop, target, (_args, rendered) => {
             try {
-              const buttons = findRows(rendered);
-              if (!buttons || buttons.some(row =>
-                String((row && row.props && (row.props.label || row.props.message)) || "").toLowerCase() === "edit locally"
-              )) return rendered;
-              const currentUser = userStore && userStore.getCurrentUser && userStore.getCurrentUser();
-              const currentMessage = store && store.getMessage ? (store.getMessage(channelId, message.id) || message) : message;
-              if (!currentUser || (currentMessage.author && currentMessage.author.id === currentUser.id)) return rendered;
-              const FormRow = Forms && Forms.FormRow;
-              const ActualRow = Row || FormRow;
-              if (!ActualRow) return rendered;
-              const onEdit = () => startLocalEdit(currentMessage);
-              const row = React.createElement(ActualRow, {
-                key: "localedit-" + String(currentMessage.id),
-                label: "Edit Locally",
-                message: "Edit Locally",
-                onPress: onEdit,
-                onPressRow: onEdit
-              });
-              const unreadIndex = buttons.findIndex(item =>
-                /mark unread/i.test(String((item && item.props && (item.props.label || item.props.message)) || ""))
-              );
-              buttons.splice(Math.max(unreadIndex, 0), 0, row);
-            } catch (e) { console.error("[localedit] Could not add the context-menu action.", e); }
-            return rendered;
+              React.useEffect(() => () => {
+                try { unpatch?.(); } catch {}
+                const at = patches.indexOf(unpatch);
+                if (at >= 0) patches.splice(at, 1);
+              }, []);
+              return addMenuRow(rendered, message);
+            } catch (error) {
+              log.error("[localedit] Could not add Edit Locally to the message menu.", error);
+              return rendered;
+            }
           });
-          setTimeout(() => { try { unpatch(); } catch {} }, 1500);
-        }).catch(e => console.warn("[localedit] Could not load the message action sheet.", e));
+          patches.push(unpatch);
+        }).catch(error => log.error("[localedit] Could not load message action sheet.", error));
       }));
     }
 
     function Settings() {
       const [, refresh] = React.useState(0);
       const entries = Object.entries(edits());
-      const create = (type, style, children) => React.createElement(type, { style }, children);
       return React.createElement(ScrollView, { contentContainerStyle: { padding: 16 } },
-        create(Text, { fontSize: 23, fontWeight: "700", color: "#e8ddff", marginBottom: 8 }, "Local Edit Remastered"),
-        create(Text, { color: "#c8bfd8", marginBottom: 16, lineHeight: 20 },
-          "Only your client sees these edits. They are stored locally and are never sent as Discord message edits."),
-        create(Text, { color: "#e8ddff", fontWeight: "600", marginBottom: 12 },
-          "Saved local edits: " + entries.length),
+        React.createElement(Text, { style: { fontSize: 22, fontWeight: "700", color: "#e5ddff", marginBottom: 8 } }, "Local Edit Remastered"),
+        React.createElement(Text, { style: { color: "#c9c2dc", marginBottom: 16, lineHeight: 20 } },
+          "These edits exist only on this device. They are never sent as Discord message edits."),
+        React.createElement(Text, { style: { color: "#e5ddff", fontWeight: "600", marginBottom: 12 } }, "Saved local edits: " + entries.length),
         ...entries.map(([id, edit]) => React.createElement(View, {
-          key: id, style: { backgroundColor: "#30283f", borderRadius: 14, padding: 14, marginBottom: 10 }
+          key: id, style: { backgroundColor: "#302b42", borderRadius: 14, padding: 14, marginBottom: 10 }
         },
-          React.createElement(Text, { style: { color: "#c2a6ff", fontSize: 12, marginBottom: 6 } }, "Message ID: " + id),
-          React.createElement(Text, { style: { color: "#f4efff", marginBottom: 12 }, numberOfLines: 3 }, edit.content || "(empty message)"),
+          React.createElement(Text, { style: { color: "#bca7ff", fontSize: 12, marginBottom: 6 } }, "Message ID: " + id),
+          React.createElement(Text, { style: { color: "#f2effa", marginBottom: 12 }, numberOfLines: 3 }, edit.content || "(empty message)"),
           React.createElement(Pressable, {
-            onPress: () => { clearEdit(id); refresh(n => n + 1); },
-            style: { alignSelf: "flex-start", backgroundColor: "#584672", borderRadius: 20, paddingVertical: 8, paddingHorizontal: 14 }
-          }, React.createElement(Text, { style: { color: "#fff", fontWeight: "600" } }, "Clear local edit"))
+            onPress: () => { clearLocalEdit(id); refresh(n => n + 1); },
+            style: { alignSelf: "flex-start", backgroundColor: "#55456f", borderRadius: 20, paddingVertical: 8, paddingHorizontal: 14 }
+          }, React.createElement(Text, { style: { color: "#ffffff", fontWeight: "600" } }, "Clear local edit"))
         )),
-        entries.length ? null : create(Text, { color: "#a99fbb", fontStyle: "italic" },
-          "No local edits yet. Long-press a message from someone else and choose Edit Locally.")
+        entries.length === 0
+          ? React.createElement(Text, { style: { color: "#aaa2bf", fontStyle: "italic" } },
+            "No local edits yet. Long-press someone else's message and choose Edit Locally.")
+          : null
       );
     }
 
-    return {
-      onLoad() {
-        patchMessageStore();
-        patchEditor();
-        patchActionSheet();
-        console.log("[localedit] Loaded. Changes stay on this device.");
-      },
-      onUnload() {
-        patches.splice(0).forEach(unpatch => { try { unpatch(); } catch {} });
-        activeEdit = null;
-        snapshots.clear();
-      },
-      settings: Settings
-    };
+    function unload() {
+      if (!enabled) return;
+      enabled = false;
+      try {
+        if (Array.isArray(FluxDispatcher?._interceptors)) {
+          FluxDispatcher._interceptors = FluxDispatcher._interceptors.filter(item => item !== interceptor);
+        }
+      } catch {}
+      for (const unpatch of patches.splice(0)) {
+        try { unpatch(); } catch {}
+      }
+      try {
+        for (const [id, edit] of Object.entries(edits())) {
+          if (edit.originalContent !== null && MessageStore?.getMessage?.(edit.channelId, id)) {
+            dispatchContent(id, edit.channelId, edit.originalContent);
+          }
+        }
+      } catch {}
+      log.log("[localedit] Unloaded.");
+    }
+
+    function load() {
+      const registry = globalThis.__lesbunnyLocalEditPlugins || (globalThis.__lesbunnyLocalEditPlugins = {});
+      registry.remastered?.();
+      const stop = () => {
+        if (registry.remastered === stop) delete registry.remastered;
+        unload();
+      };
+      registry.remastered = stop;
+
+      enabled = true;
+      MessageStore = safeFind(findByStoreName, "MessageStore") ||
+        safeFind(findByProps, "getMessage", "getMessages");
+      UserStore = safeFind(findByStoreName, "UserStore") ||
+        safeFind(findByProps, "getCurrentUser");
+      MessageActions = safeFind(findByProps, "fetchMessages", "sendMessage") ||
+        safeFind(findByProps, "jumpToMessage");
+      try { (FluxDispatcher._interceptors ??= []).unshift(interceptor); }
+      catch (error) { log.error("[localedit] Could not register message-update interceptor.", error); }
+      patchActionSheet();
+      applyToLoaded();
+      log.log("[localedit] Loaded v1.2.0. Look for Edit Locally in another person's long-press menu.");
+    }
+
+    return { onLoad: load, onUnload: unload, settings: Settings };
   })()
 })
