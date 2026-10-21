@@ -425,6 +425,13 @@
     }
 
     function startLocalEdit() {
+      storage.localEditClearOnRestart ??= false;
+      const sessionId = globalThis.__kiraUtilsLocalEditSession ??=
+        `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      if (storage.localEditClearOnRestart && storage.localEditSessionId && storage.localEditSessionId !== sessionId) {
+        storage.localEdits = {};
+      }
+      storage.localEditSessionId = sessionId;
       if (globalThis.__lesbunnyLocalEditPlugins?.remastered) {
         storage.toggle.localEdit = false;
         showToast("Standalone Local Edit is already enabled. Disable it to use KiraUtils Local Edit.");
@@ -654,6 +661,7 @@
         group("LOCAL EDITING", "These changes affect only your local display; they never edit a server message.", [
           toggle("localEdit", "Local Edit", "Use Discord's normal edit composer, but intercept Save to store the new text locally."),
           storage.toggle.localEdit ? React.createElement(View, { key: "local-edit-options", style: { paddingLeft: 8, marginBottom: 8 } },
+            subToggle("Clear local edits on app restart", "localEditClearOnRestart"),
             subToggle("Show Edit Locally on my own messages", "localEditShowOwn"),
             label("Saved local edits: " + Object.keys(localEdits).length, { color: "#c9bfd9", fontSize: 12, marginBottom: 8 }),
             settingSwitch("Clear every local edit", "clear-local-edits", () => {
