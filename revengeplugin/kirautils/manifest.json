@@ -1,23 +1,39 @@
 {
   "name": "KiraUtils",
-  "description": "A toggleable utility collection adapted from AzzyUtils and NexxUtils, with No Type, Staff Tags, Tenor GIF Fix and MiniMod timeout indicators.",
+  "description": "All-in-one grouped utility collection: Hide Blocked/ignored, Copy Bios, catbox.moe, Silent Messages, Anonymous File Names, Hidden Channels, Local Edit, Staff Tags, Tenor GIF Fix and MiniMod.",
   "authors": [
     {
       "name": "Kira",
       "id": "925904715525554206"
     },
     {
-      "name": "Angelica (original AzzyUtils author)",
+      "name": "Angel / Angelica (AzzyUtils base)",
       "id": "692632336961110087"
     },
     {
-      "name": "nexpid (NexxUtils upstream)",
-      "id": "60316309"
+      "name": "Zykrah (HideBlockedAndIgnoredMessages)",
+      "id": "543614592291700748"
+    },
+    {
+      "name": "シグマ siguma",
+      "id": "737597276339437578"
+    },
+    {
+      "name": "maisy (AnonymousFileNames)",
+      "id": "257109471589957632"
+    },
+    {
+      "name": "Lioncat6 (Hidden Channels)",
+      "id": "917903273514663957"
+    },
+    {
+      "name": "nexpid (NexxUtils)",
+      "id": "853550207039832084"
     }
   ],
   "main": "index.js",
-  "version": "2.1.0",
-  "hash": "KiraUtils-2.1.0-20261021",
+  "version": "2.2.0",
+  "hash": "KiraUtils-2.2.0-20261021",
   "vendetta": {
     "icon": "ic_progress_wrench_24px"
   }
