@@ -285,8 +285,10 @@
           const msg = args?.[1];
           if (!msg || typeof msg.content !== "string" || msg.content.startsWith("@silent ")) return;
           let ids = [channelId];
-          try { const c = channelStore?.getChannel?.(channelId); if (Array.isArray(c?.recipients)) ids = [...new Set([...c.recipients, channelId])]; } catch {}
-          if (storage.silentAlways || ids.some(id => (storage.silentChannelIds || []).includes(String(id)))) msg.content = "@silent " + msg.content;
+          try { const c = channelStore?.getChannel?.(channelId); if (Array.isArray(c?.recipients)) ids.push(...c.recipients); } catch {}
+          if (Array.isArray(msg.mentions)) ids.push(...msg.mentions.map(mention => mention?.id).filter(Boolean));
+          ids = [...new Set(ids.map(id => String(id)))];
+          if (storage.silentAlways || ids.some(id => (storage.silentChannelIds || []).includes(id))) msg.content = "@silent " + msg.content;
         }));
       }
       return () => cleanup(patches);
@@ -412,8 +414,8 @@
       };
       addCleanup(patches, after("can", permissionModule, ([permission, channel], result) => permission === viewChannel && !channel?.realCheck ? true : result));
       const ChannelInfo = safeFind(findByName, "ChannelInfo", false);
-      if (ChannelInfo && storage.hiddenChannelsShowIcon) addCleanup(patches, after("default", ChannelInfo, ([props], rendered) => {
-        if (!props?.channel || !isHidden(props.channel)) return rendered;
+      if (ChannelInfo) addCleanup(patches, after("default", ChannelInfo, ([props], rendered) => {
+        if (!storage.hiddenChannelsShowIcon || !props?.channel || !isHidden(props.channel)) return rendered;
         return React.createElement(React.Fragment, null,
           React.createElement(ReactNative.Image, { source: getAssetIDByName("ic_lock"), style: { width: 20, height: 20, marginRight: 4 } }),
           rendered
@@ -631,7 +633,7 @@
         group("PROFILE & CHANNELS", "Copy profile text or inspect channels your permissions hide.", [
           toggle("copyBios", "Copy Bios", "Make profile bio text selectable for normal copying."),
           toggle("hiddenChannels", "Hidden Channels", "Permit viewing channels hidden by VIEW_CHANNEL permissions. Use responsibly."),
-          storage.toggle.hiddenChannels ? roleColor : null
+          storage.toggle.hiddenChannels ? subToggle("Show lock icon on hidden channels", "hiddenChannelsShowIcon") : null
         ]),
         group("FIXES & SMALL UTILITIES", "Standalone modules inspired by NexxUtils.", [
           toggle("notype", "No Type", "Suppress the typing indicator for your account."),
