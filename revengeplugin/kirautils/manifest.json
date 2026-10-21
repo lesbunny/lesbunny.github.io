@@ -1,6 +1,6 @@
 {
   "name": "KiraUtils",
-  "description": "A toggleable set of client-side utilities adapted from AzzyUtils, with Staff Tags and the NexxUtils-inspired Tenor GIF fix.",
+  "description": "A toggleable utility collection adapted from AzzyUtils and NexxUtils, with No Type, Staff Tags, Tenor GIF Fix and MiniMod timeout indicators.",
   "authors": [
     {
       "name": "Kira",
@@ -16,8 +16,8 @@
     }
   ],
   "main": "index.js",
-  "version": "2.0.0",
-  "hash": "KiraUtils-2.0.0-20261021",
+  "version": "2.1.0",
+  "hash": "KiraUtils-2.1.0-20261021",
   "vendetta": {
     "icon": "ic_progress_wrench_24px"
   }
