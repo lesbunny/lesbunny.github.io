@@ -142,8 +142,9 @@
     }
 
     function openEditor(message) {
-      const actions = safeFind(findByProps, "startEditMessage", "editMessage");
-      if (typeof actions?.startEditMessage !== "function" || typeof actions?.editMessage !== "function") {
+      const startActions = safeFind(findByProps, "startEditMessage");
+      const editActions = safeFind(findByProps, "editMessage") || startActions;
+      if (typeof startActions?.startEditMessage !== "function" || typeof editActions?.editMessage !== "function") {
         log.error("[localedit] Discord's native edit composer could not be found.");
         return;
       }
@@ -152,8 +153,8 @@
       const id = String(message?.id ?? "");
       const channel = String(message?.channel_id ?? message?.channelId ?? "");
       if (!id || !channel) return;
-      pendingNativeEdit = { id, channel, message, actions };
-      originalNativeEditMessage = actions.editMessage;
+      pendingNativeEdit = { id, channel, message, actions: editActions };
+      originalNativeEditMessage = editActions.editMessage;
       wrappedNativeEditMessage = function (...args) {
         const pending = pendingNativeEdit;
         const targetChannel = String(args?.[0] ?? "");
@@ -172,11 +173,11 @@
         } catch {}
         return Promise.resolve();
       };
-      actions.editMessage = wrappedNativeEditMessage;
+      editActions.editMessage = wrappedNativeEditMessage;
       nativeEditTimeout = setTimeout(cancelNativeEditing, 120000);
 
       try {
-        actions.startEditMessage(channel, id, String(getEdit(id)?.content ?? message.content ?? ""));
+        startActions.startEditMessage(channel, id, String(getEdit(id)?.content ?? message.content ?? ""));
       } catch (error) {
         cancelNativeEditing();
         log.error("[localedit] Could not open Discord's native edit composer.", error);
