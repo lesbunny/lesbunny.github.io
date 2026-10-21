@@ -460,7 +460,10 @@
       addCleanup(patches, before("dispatch", FluxDispatcher, args => {
         const e = args?.[0];
         if (!e || e.__kiraLocalEdit) return;
-        if (pending && ["CLEAR_EDITING_MESSAGE", "CANCEL_EDITING_MESSAGE", "END_EDITING_MESSAGE"].includes(e.type)) restore();
+        if (pending && ["CLEAR_EDITING_MESSAGE", "CANCEL_EDITING_MESSAGE", "END_EDITING_MESSAGE"].includes(e.type)) {
+          const expectedEdit = pending;
+          setTimeout(() => { if (pending === expectedEdit) restore(); }, 50);
+        }
         if (["MESSAGE_CREATE", "MESSAGE_UPDATE"].includes(e.type) && e.message) { const m = apply(e.message); if (m !== e.message) e.message = m; }
         if (Array.isArray(e.messages)) e.messages = e.messages.map(apply);
       }));
