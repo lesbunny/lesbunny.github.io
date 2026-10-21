@@ -6,6 +6,9 @@
     const { storage } = vendetta.plugin;
     const { findInReactTree } = vendetta.utils;
     const rawColors = vendetta.ui.rawColors || {};
+    const showToast = (...args) => { try { const fn = vendetta.ui.toasts?.showToast; if (typeof fn === "function") return fn(...args); } catch {} console.warn("[KiraUtils]", ...args); };
+    let catboxPendingLink = null;
+    const uploadPatchState = { proto: null, original: null, wrapper: null };
     const Messages = (() => { try { return vendetta.metro.common.i18n.Messages || {}; } catch { return {}; } })();
     const BUILT_IN_TAGS = [Messages.AI_TAG, Messages.BOT_TAG_BOT, Messages.BOT_TAG_SERVER, Messages.SYSTEM_DM_TAG_SYSTEM, Messages.GUILD_AUTOMOD_USER_BADGE_TEXT, Messages.REMIXING_TAG].filter(Boolean);
     const MAX_TAGS = ["WEBHOOK", "OWNER", "ADMIN", "STAFF", "MOD", "VC Mod", "Chat Mod"];
@@ -265,20 +268,8 @@
           if (Array.isArray(files)) for (const file of files) anonymizeFile(file, Number.parseInt(storage.anonymousFilenameLength, 10) || 8);
         }));
       }
-      const proto = safeFind(findByProps, "CloudUpload")?.CloudUpload?.prototype;
-      if (proto && typeof proto.reactNativeCompressAndExtractData === "function") {
-        const original = proto.reactNativeCompressAndExtractData;
-        const replacement = function (...args) {
-          if (storage.toggle?.anonymousFileNames) {
-            const length = Number.parseInt(storage.anonymousFilenameLength, 10) || 8;
-            anonymizeFile(this, length);
-            for (const arg of args) anonymizeFile(arg, length);
-          }
-          return original.apply(this, args);
-        };
-        proto.reactNativeCompressAndExtractData = replacement;
-        patches.push(() => { if (proto.reactNativeCompressAndExtractData === replacement) proto.reactNativeCompressAndExtractData = original; });
-      }
+      ensureUploadWrapper();
+      patches.push(() => reconcileUploadWrapper());
       return () => cleanup(patches);
     }
 
@@ -313,49 +304,81 @@
       if (!response.ok || !/^https:\/\//i.test(result)) throw new Error(result || "Catbox upload failed");
       return result;
     }
+    function ensureUploadWrapper() {
+      const proto = safeFind(findByProps, "CloudUpload")?.CloudUpload?.prototype;
+      if (!proto || typeof proto.reactNativeCompressAndExtractData !== "function") {
+        console.warn("[KiraUtils/Uploads] CloudUpload was not found on this client.");
+        return;
+      }
+      if (uploadPatchState.proto === proto && proto.reactNativeCompressAndExtractData === uploadPatchState.wrapper) return;
+      const original = proto.reactNativeCompressAndExtractData;
+      const replacement = async function (...args) {
+        if (storage.toggle?.anonymousFileNames) {
+          const length = Number.parseInt(storage.anonymousFilenameLength, 10) || 8;
+          anonymizeFile(this, length);
+          for (const arg of args) anonymizeFile(arg, length);
+        }
+        if (!storage.toggle?.catbox) return original.apply(this, args);
+        const size = Number(this?.preCompressionSize ?? this?.size ?? 0);
+        if (!storage.catboxAlwaysUpload && size <= 10 * 1024 * 1024) return original.apply(this, args);
+        if (size > 200 * 1024 * 1024) { showToast("File is above 200 MB; using normal Discord upload."); return original.apply(this, args); }
+        try {
+          showToast("Uploading file to catbox.moe…");
+          const url = await uploadCatbox(this);
+          try { this.setStatus?.("CANCELED"); } catch {}
+          const markdown = "[" + String(this?.filename ?? "file") + "](" + url + ")";
+          const sender = safeFind(findByProps, "sendMessage");
+          const channelStore = safeFind(findByProps, "getChannelId");
+          const channelId = String(this?.channelId ?? channelStore?.getChannelId?.() ?? "");
+          if (storage.catboxInsert) {
+            catboxPendingLink = markdown;
+            showToast("Catbox link will be inserted into your next message.");
+          } else if (storage.catboxCopy && ReactNative?.Clipboard?.setString) {
+            ReactNative.Clipboard.setString(markdown);
+            showToast("Catbox link copied.");
+          } else if (channelId && typeof sender?.sendMessage === "function") {
+            await sender.sendMessage(channelId, { content: markdown });
+            showToast("Catbox link sent to chat.");
+          } else showToast("Catbox upload complete: " + url);
+          return null;
+        } catch (error) {
+          console.error("[KiraUtils/Catbox]", error);
+          showToast("Catbox upload failed; falling back to Discord.");
+          return original.apply(this, args);
+        }
+      };
+      uploadPatchState.proto = proto;
+      uploadPatchState.original = original;
+      uploadPatchState.wrapper = replacement;
+      proto.reactNativeCompressAndExtractData = replacement;
+    }
+    function reconcileUploadWrapper() {
+      if (storage.toggle?.anonymousFileNames || storage.toggle?.catbox) {
+        ensureUploadWrapper();
+        return;
+      }
+      const state = uploadPatchState;
+      if (state.proto && state.wrapper && state.proto.reactNativeCompressAndExtractData === state.wrapper) {
+        state.proto.reactNativeCompressAndExtractData = state.original;
+      }
+      state.proto = null; state.original = null; state.wrapper = null; catboxPendingLink = null;
+    }
     function startCatbox() {
       storage.catboxAlwaysUpload ??= false;
       storage.catboxCopy ??= true;
       storage.catboxInsert ??= false;
       storage.catboxUserhash ??= "";
       const patches = [];
-      let pendingLink = null;
       const sender = safeFind(findByProps, "sendMessage");
-      const channels = safeFind(findByProps, "getChannelId");
-      if (typeof sender?.sendMessage === "function") addCleanup(patches, before("sendMessage", sender, args => {
-        if (pendingLink && args?.[1] && typeof args[1].content === "string") {
-          args[1].content = args[1].content ? args[1].content + "\n" + pendingLink : pendingLink;
-          pendingLink = null;
-        }
-      }));
-      const proto = safeFind(findByProps, "CloudUpload")?.CloudUpload?.prototype;
-      if (proto && typeof proto.reactNativeCompressAndExtractData === "function") {
-        const original = proto.reactNativeCompressAndExtractData;
-        const replacement = async function (...args) {
-          if (storage.toggle?.anonymousFileNames) anonymizeFile(this, Number.parseInt(storage.anonymousFilenameLength, 10) || 8);
-          const size = Number(this?.preCompressionSize ?? this?.size ?? 0);
-          if (!storage.catboxAlwaysUpload && size <= 10 * 1024 * 1024) return original.apply(this, args);
-          if (size > 200 * 1024 * 1024) { showToast("File is above 200 MB; using normal Discord upload."); return original.apply(this, args); }
-          try {
-            showToast("Uploading file to catbox.moe…");
-            const url = await uploadCatbox(this);
-            try { this.setStatus?.("CANCELED"); } catch {}
-            const markdown = "[" + String(this?.filename ?? "file") + "](" + url + ")";
-            const channelId = String(this?.channelId ?? channels?.getChannelId?.() ?? "");
-            if (storage.catboxInsert) { pendingLink = markdown; showToast("Catbox link will be inserted into your next message."); }
-            else if (storage.catboxCopy && ReactNative?.Clipboard?.setString) { ReactNative.Clipboard.setString(markdown); showToast("Catbox link copied."); }
-            else if (channelId && typeof sender?.sendMessage === "function") { await sender.sendMessage(channelId, { content: markdown }); showToast("Catbox link sent to chat."); }
-            else showToast("Catbox upload complete: " + url);
-            return null;
-          } catch (error) {
-            console.error("[KiraUtils/Catbox]", error);
-            showToast("Catbox upload failed; falling back to Discord.");
-            return original.apply(this, args);
-          }
-        };
-        proto.reactNativeCompressAndExtractData = replacement;
-        patches.push(() => { if (proto.reactNativeCompressAndExtractData === replacement) proto.reactNativeCompressAndExtractData = original; pendingLink = null; });
-      } else console.warn("[KiraUtils/Catbox] CloudUpload is unavailable on this client.");
+      if (typeof sender?.sendMessage === "function") {
+        addCleanup(patches, before("sendMessage", sender, args => {
+          if (!storage.toggle?.catbox || !catboxPendingLink || !args?.[1] || typeof args[1].content !== "string") return;
+          args[1].content = args[1].content ? args[1].content + "\n" + catboxPendingLink : catboxPendingLink;
+          catboxPendingLink = null;
+        }));
+      }
+      ensureUploadWrapper();
+      patches.push(() => { catboxPendingLink = null; reconcileUploadWrapper(); });
       return () => cleanup(patches);
     }
 
