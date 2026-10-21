@@ -330,16 +330,22 @@
           const sender = safeFind(findByProps, "sendMessage");
           const channelStore = safeFind(findByProps, "getChannelId");
           const channelId = String(this?.channelId ?? channelStore?.getChannelId?.() ?? "");
+          let delivered = false;
           if (storage.catboxInsert) {
             catboxPendingLink = markdown;
             showToast("Catbox link will be inserted into your next message.");
-          } else if (storage.catboxCopy && ReactNative?.Clipboard?.setString) {
+            delivered = true;
+          }
+          if (storage.catboxCopy && ReactNative?.Clipboard?.setString) {
             ReactNative.Clipboard.setString(markdown);
             showToast("Catbox link copied.");
-          } else if (channelId && typeof sender?.sendMessage === "function") {
+            delivered = true;
+          } else if (!storage.catboxInsert && channelId && typeof sender?.sendMessage === "function") {
             await sender.sendMessage(channelId, { content: markdown });
             showToast("Catbox link sent to chat.");
-          } else showToast("Catbox upload complete: " + url);
+            delivered = true;
+          }
+          if (!delivered) showToast("Catbox upload complete: " + url);
           return null;
         } catch (error) {
           console.error("[KiraUtils/Catbox]", error);
