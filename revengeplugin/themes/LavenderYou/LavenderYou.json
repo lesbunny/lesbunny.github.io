@@ -1,15 +1,11 @@
 {
   "name": "Lavender You",
-  "description": "Dark lavender Material You theme by Kira (lesbunny), remixed from YouBlue by dor4a.",
+  "description": "Dark lavender Material You theme by Kira.",
   "version": "1.1",
   "authors": [
     {
-      "name": "Kira (lesbunny)",
+      "name": "Kira",
       "id": ""
-    },
-    {
-      "name": "dor4a #avtvshutup",
-      "id": "455513497288310785"
     }
   ],
   "semanticColors": {
