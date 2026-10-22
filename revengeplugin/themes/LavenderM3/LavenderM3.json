@@ -115,7 +115,7 @@
       "#CDB4FF"
     ],
     "MENTION_BACKGROUND": [
-      "#CDB4FF25"
+      "#49375E"
     ],
     "MENTION_FOREGROUND": [
       "#E9DAFF"
@@ -202,7 +202,7 @@
       "#B99AFF"
     ],
     "REDESIGN_BUTTON_PRIMARY_TEXT": [
-      "#E9DAFF"
+      "#2B1A43"
     ],
     "REDESIGN_INPUT_CONTROL_SELECTED": [
       "#DCC7FF"
